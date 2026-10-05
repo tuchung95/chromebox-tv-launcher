@@ -2,6 +2,35 @@
 <resources>
     <string name="app_name">Chromebox TV</string>
 
+    <!-- Top navigation -->
+    <string name="tab_home">Trang chủ</string>
+    <string name="tab_apps">Ứng dụng</string>
+    <string name="tab_web">Trang web</string>
+    <string name="tab_settings">Cài đặt</string>
+    <string name="tab_search">Tìm kiếm</string>
+
+    <!-- Featured carousel -->
+    <string name="hero_open">Mở ngay</string>
+    <string name="hero_app">Ứng dụng yêu thích</string>
+    <string name="hero_youtube_tv">YouTube giao diện TV, điều khiển bằng remote</string>
+    <string name="hero_launcher">Xem ngay trong launcher · %1$s</string>
+    <string name="hero_browser">Mở bằng %1$s · %2$s</string>
+
+    <!-- Search tab -->
+    <string name="search_hint">Tìm ứng dụng, trang web hoặc video</string>
+    <string name="search_results">Kết quả</string>
+    <string name="google">Google</string>
+
+    <!-- Settings tab -->
+    <string name="settings_fullscreen">Toàn màn hình</string>
+    <string name="setting_on">Đang bật · bấm để tắt (F11)</string>
+    <string name="setting_off">Đang tắt · bấm để bật (F11)</string>
+    <string name="settings_add_web_detail">Ghim một trang vào hàng Xem ngay</string>
+    <string name="settings_about">Giới thiệu</string>
+    <string name="settings_about_detail">Chromebox TV · github.com/tuchung95/chromebox-tv-launcher</string>
+    <string name="update_version_current">Phiên bản %1$s · bấm để kiểm tra bản mới</string>
+    <string name="update_version_new">Có bản mới %1$s · bấm để cập nhật</string>
+
     <!-- Rows -->
     <string name="row_watch">Xem ngay</string>
     <string name="row_favorites">Yêu thích</string>

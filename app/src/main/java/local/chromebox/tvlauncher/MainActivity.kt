@@ -98,10 +98,11 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         remote = AtvvRemote(this, { store.remoteAddress }, this)
 
         home.fullscreen = store.fullscreen
+        updateVersionLabel()
         setContent { ChromeboxTvTheme { HomeScreen(home, this) } }
 
-        // A launcher never closes itself on Back; it returns to the top of the home screen
-        onBackPressedDispatcher.addCallback(this) { home.backToTop++ }
+        // A launcher never closes itself on Back; it returns to the navigation bar and Home tab
+        onBackPressedDispatcher.addCallback(this) { home.backRequest++ }
     }
 
     override fun onStart() {
@@ -230,6 +231,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         home.fullscreen = store.fullscreen
         applyFullscreen(store.fullscreen)
     }
+
+    override fun searchFor(query: String, shortcut: WebShortcut?) = search(shortcut, query)
 
     override fun dismissVoice() {
         remote.closeMicrophone()
@@ -537,6 +540,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun updateRemoteLabel() {
         home.remoteLabel = getString(remoteStatusText())
+        home.remoteReady = remoteState == AtvvRemote.State.READY && modelState == SpeechEngine.ModelState.READY
     }
 
     private fun showRemoteDialog() {
@@ -727,8 +731,18 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
                     availableUpdates = list.filter { it.pkg == packageName && it.hasUpdate }
                 }
                 home.updateAvailable = availableUpdates.isNotEmpty()
+                updateVersionLabel()
                 if (!quiet || onDone != null) onDone?.invoke(result.exceptionOrNull())
             }
+        }
+    }
+
+    private fun updateVersionLabel() {
+        val update = availableUpdates.firstOrNull()
+        home.updateLabel = if (update != null) {
+            getString(R.string.update_version_new, update.versionName)
+        } else {
+            getString(R.string.update_version_current, currentVersionName())
         }
     }
 

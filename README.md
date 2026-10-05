@@ -2,7 +2,7 @@
 
 Màn hình chính kiểu TV cho Chromebox chạy ChromeOS. Ứng dụng chạy trong lớp Android của ChromeOS và được thiết kế để điều khiển từ xa trên TV: các ô lớn, đồng hồ to, dùng được phím mũi tên, chuột hoặc remote Bluetooth.
 
-Giao diện dùng [Compose for TV](https://developer.android.com/training/tv/playback/compose) (Material 3 for TV) của Google và theo [hướng dẫn thiết kế Android TV](https://developer.android.com/design/ui/tv/guides/foundations/design-for-tv): bố cục 960 × 540 dp với lề an toàn 5%, thẻ 16:9 theo lưới 3 và 4 thẻ mỗi hàng, thẻ đang chọn được phóng to, có viền và glow, và mỗi hàng nhớ thẻ đang chọn khi di chuyển lên xuống.
+Giao diện theo phong cách Google TV, dựng bằng [Compose for TV](https://developer.android.com/training/tv/playback/compose) (Material 3 for TV) của Google như ứng dụng mẫu JetStream: thanh tab trên cùng (Trang chủ, Ứng dụng, Trang web, Cài đặt, Tìm kiếm), băng chuyền nổi bật tự chạy ở đầu trang chủ và các hàng thẻ bên dưới. Bố cục theo [hướng dẫn thiết kế Android TV](https://developer.android.com/design/ui/tv/guides/foundations/design-for-tv): 960 × 540 dp với lề an toàn 5%, thẻ 16:9 theo lưới 3 và 4 thẻ mỗi hàng, thẻ đang chọn được phóng to, có viền và glow. Phím Quay lại đưa focus về thanh tab, rồi về tab Trang chủ.
 
 ## Tính năng
 
