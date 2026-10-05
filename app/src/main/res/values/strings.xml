@@ -20,6 +20,7 @@
     <string name="field_url">Địa chỉ, ví dụ film4k.net</string>
     <string name="field_search" formatted="false">Tìm kiếm (tùy chọn), ví dụ youtube.com/results?search_query=%s</string>
     <string name="opener_launcher">Mở ngay trong launcher</string>
+    <string name="opener_youtube_tv">Mở bằng giao diện YouTube TV</string>
     <string name="opener_browser4k">Mở bằng 4K Browser</string>
     <string name="opener_chrome">Mở bằng Chrome</string>
     <string name="name_launcher">Launcher</string>
@@ -38,6 +39,7 @@
     <string name="open_in_window">Mở trong cửa sổ riêng</string>
     <string name="open_in_launcher">Mở trong launcher</string>
     <string name="web_back_hint">Bấm Quay lại để về màn hình chính</string>
+    <string name="web_tv_back_hint">Nhấn giữ Quay lại để về màn hình chính</string>
     <string name="web_renderer_restarted">Trình phát bị lỗi và đã được tải lại</string>
     <string name="edit">Sửa</string>
     <string name="delete">Xóa</string>

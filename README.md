@@ -8,6 +8,7 @@ Giao diện dùng [Compose for TV](https://developer.android.com/training/tv/pla
 
 - **Ba hàng ô.** Hàng "Xem ngay" chứa các trang web hay xem. Hàng "Yêu thích" chứa các ứng dụng được ghim. Hàng "Tất cả ứng dụng" chứa mọi ứng dụng Android đã cài.
 - **Mở ngay trong launcher.** Ứng dụng và trang web hiện trong chính cửa sổ launcher, bấm Quay lại để về màn hình chính. Trang web phát bằng trình phát dựng sẵn, có chặn popup quảng cáo và xem video toàn màn hình. Mỗi ô web cũng có thể chọn mở bằng Chrome của ChromeOS hoặc 4K Browser.
+- **YouTube giao diện TV.** Ô YouTube mở giao diện YouTube dành cho TV ngay trong launcher, điều khiển hoàn toàn bằng remote, đăng nhập bằng mã trên điện thoại qua yt.be/activate. Phím Quay lại điều hướng trong YouTube, nhấn giữ Quay lại để về màn hình chính. Launcher ẩn AV1 với YouTube để video dùng VP9 hoặc H.264, hai codec mà GPU của Chromebox giải mã được. Nếu máy có app YouTube cho Android TV, như trên Android TV box, launcher mở app đó.
 - **Ra lệnh bằng giọng nói qua remote Xiaomi.** Hỗ trợ remote Bluetooth Xiaomi 2 và 2 Pro. Tiếng Việt được nhận dạng ngay trên máy, không cần mạng.
 - **Tự cập nhật.** Ứng dụng tự kiểm tra GitHub Releases và cài bản mới sau một lần xác nhận, không cần cắm cáp hay dùng adb.
 - **Toàn màn hình.** Bấm F11 hoặc nút ở góc trên để chuyển chế độ toàn màn hình.

@@ -2,6 +2,7 @@ package local.chromebox.tvlauncher
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -10,12 +11,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -28,6 +31,8 @@ import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.Toast
 import android.window.OnBackInvokedDispatcher
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 
 /**
  * Plays a web page full screen inside the launcher's window. Back walks the page history,
@@ -35,6 +40,10 @@ import android.window.OnBackInvokedDispatcher
  *
  * Tuned for movie sites: the video keeps playing while the ChromeOS window is visible but
  * not focused, a crashed renderer is replaced, and ad popups and app-link redirects are dropped.
+ *
+ * In TV mode ([EXTRA_TV_MODE]) the page is YouTube's TV interface: it gets a smart-TV user
+ * agent, Back is passed to the page, holding Back returns to the launcher, and AV1 is hidden
+ * so YouTube streams VP9 or H.264, which the Chromebox GPU decodes.
  */
 class WebPlayerActivity : Activity() {
 
@@ -47,9 +56,12 @@ class WebPlayerActivity : Activity() {
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var lastUrl = ""
+    private var tvMode = false
+    private var backLongPressed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        tvMode = intent.getBooleanExtra(EXTRA_TV_MODE, false)
         setContentView(R.layout.activity_web_player)
         webContainer = findViewById(R.id.web_container)
         fullscreenContainer = findViewById(R.id.fullscreen_container)
@@ -63,10 +75,13 @@ class WebPlayerActivity : Activity() {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { onBack() }
         }
 
+        if (tvMode) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         val restored = savedInstanceState != null && wv.restoreState(savedInstanceState) != null
         if (!restored) {
             intent?.dataString?.let { load(it) }
-            Toast.makeText(this, R.string.web_back_hint, Toast.LENGTH_SHORT).show()
+            val hint = if (tvMode) R.string.web_tv_back_hint else R.string.web_back_hint
+            Toast.makeText(this, hint, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -120,9 +135,46 @@ class WebPlayerActivity : Activity() {
         val wv = webView
         when {
             customView != null -> hideCustomView()
+            tvMode -> sendBackToPage()
             wv != null && wv.canGoBack() -> wv.goBack()
             else -> finish()
         }
+    }
+
+    /** YouTube's TV interface treats Escape as the remote's Back button. */
+    private fun sendBackToPage() {
+        val wv = webView ?: return
+        wv.requestFocus()
+        wv.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ESCAPE))
+        wv.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ESCAPE))
+    }
+
+    // In TV mode a short Back goes to the page and a long Back returns to the launcher
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (tvMode && keyCode == KeyEvent.KEYCODE_BACK) {
+            event.startTracking()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (tvMode && keyCode == KeyEvent.KEYCODE_BACK) {
+            backLongPressed = true
+            finish()
+            return true
+        }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (tvMode && keyCode == KeyEvent.KEYCODE_BACK) {
+            if (!backLongPressed && event.isTracking && !event.isCanceled) onBack()
+            backLongPressed = false
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -161,7 +213,10 @@ class WebPlayerActivity : Activity() {
             javaScriptCanOpenWindowsAutomatically = false
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             allowFileAccess = false
-            userAgentString = desktopUserAgent()
+            userAgentString = if (tvMode) TV_USER_AGENT else desktopUserAgent()
+        }
+        if (tvMode && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(wv, HIDE_AV1_SCRIPT, YOUTUBE_ORIGINS)
         }
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
@@ -284,6 +339,18 @@ class WebPlayerActivity : Activity() {
             return true
         }
 
+        // YouTube's TV interface closes the window when the viewer chooses to exit
+        override fun onCloseWindow(window: WebView) {
+            if (window == webView) finish()
+        }
+
+        override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+            if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                Log.d(TAG, "${message.sourceId()}:${message.lineNumber()} ${message.message()}")
+            }
+            return false
+        }
+
         override fun onPermissionRequest(request: PermissionRequest) {
             // Allow DRM-protected playback (Widevine) only; never camera or microphone
             if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID in request.resources) {
@@ -321,6 +388,43 @@ class WebPlayerActivity : Activity() {
 
     companion object {
         const val EXTRA_TITLE = "title"
+        const val EXTRA_TV_MODE = "tv_mode"
+        private const val TAG = "WebPlayer"
+
+        /** A Samsung smart TV; YouTube serves its TV interface only to TV browsers. */
+        private const val TV_USER_AGENT = "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) 85.0.4183.93/6.0 TV Safari/537.36"
+
+        private val YOUTUBE_ORIGINS = setOf("https://www.youtube.com", "https://youtube.com", "https://m.youtube.com")
+
+        /**
+         * The Chromebox's Celeron decodes AV1 on the CPU only, which stutters. Reporting AV1 as
+         * unsupported makes YouTube choose VP9 or H.264, which the GPU decodes up to 4K.
+         */
+        private val HIDE_AV1_SCRIPT = """
+            (function () {
+              if (window.__chromeboxHideAv1) return;
+              window.__chromeboxHideAv1 = true;
+              var blocked = /av01|\bav1\b/i;
+              var source = window.MediaSource;
+              if (source && source.isTypeSupported) {
+                var isTypeSupported = source.isTypeSupported.bind(source);
+                source.isTypeSupported = function (type) { return blocked.test(type) ? false : isTypeSupported(type); };
+              }
+              var capabilities = navigator.mediaCapabilities;
+              if (capabilities && capabilities.decodingInfo) {
+                var decodingInfo = capabilities.decodingInfo.bind(capabilities);
+                capabilities.decodingInfo = function (config) {
+                  var type = (config && config.video && config.video.contentType) || '';
+                  if (blocked.test(type)) return Promise.resolve({ supported: false, smooth: false, powerEfficient: false });
+                  return decodingInfo(config);
+                };
+              }
+              var canPlayType = HTMLMediaElement.prototype.canPlayType;
+              HTMLMediaElement.prototype.canPlayType = function (type) { return blocked.test(type) ? '' : canPlayType.call(this, type); };
+              console.log('chromebox: AV1 hidden');
+            })();
+        """.trimIndent()
         private const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
 
         /** Registrable part of a host, e.g. "film4k.net" for "cdn.film4k.net". */

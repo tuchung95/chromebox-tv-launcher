@@ -3,6 +3,7 @@ package local.chromebox.tvlauncher
 import android.Manifest
 import android.app.ActivityOptions
 import android.app.AlertDialog
+import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
@@ -40,6 +41,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENERS
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_BROWSER4K
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_LAUNCHER
+import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_YOUTUBE_TV
 import java.net.URLEncoder
 import java.util.concurrent.Executors
 
@@ -236,8 +238,15 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     // --- Launching ---
 
-    private fun openUrl(url: String, opener: String) {
+    private fun openUrl(url: String, opener: String, query: String? = null) {
         val uri = Uri.parse(url)
+        if (opener == OPENER_YOUTUBE_TV) {
+            if (openYouTubeTvApp(query)) return
+            val player = Intent(this, WebPlayerActivity::class.java)
+                .setData(uri)
+                .putExtra(WebPlayerActivity.EXTRA_TV_MODE, true)
+            if (startInLauncher(player)) return
+        }
         if (opener == OPENER_LAUNCHER) {
             if (startInLauncher(Intent(this, WebPlayerActivity::class.java).setData(uri))) return
         }
@@ -253,6 +262,24 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         if (!start(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))) {
             toast(getString(R.string.no_browser))
         }
+    }
+
+    /**
+     * Uses Google's YouTube for Android TV app when it is installed, as on an Android TV box.
+     * ChromeOS has no such app, so the launcher falls back to YouTube's TV web interface.
+     */
+    private fun openYouTubeTvApp(query: String?): Boolean {
+        if (!isInstalled(YOUTUBE_TV_APP)) return false
+        if (query != null) {
+            val search = Intent(Intent.ACTION_SEARCH)
+                .setPackage(YOUTUBE_TV_APP)
+                .putExtra(SearchManager.QUERY, query)
+            if (startInLauncher(search)) return true
+        }
+        val launch = packageManager.getLeanbackLaunchIntentForPackage(YOUTUBE_TV_APP)
+            ?: packageManager.getLaunchIntentForPackage(YOUTUBE_TV_APP)
+            ?: return false
+        return startInLauncher(launch)
     }
 
     /** Opens in a separate task, which ChromeOS shows as its own window. */
@@ -297,6 +324,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     private fun openerChoice(opener: String) = getString(
         when (opener) {
             OPENER_LAUNCHER -> R.string.opener_launcher
+            OPENER_YOUTUBE_TV -> R.string.opener_youtube_tv
             OPENER_BROWSER4K -> R.string.opener_browser4k
             else -> R.string.opener_chrome
         }
@@ -677,11 +705,12 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     }
 
     private fun search(shortcut: WebShortcut?, query: String) {
-        val encoded = URLEncoder.encode(query, "UTF-8")
+        // %20 rather than "+", which YouTube's TV interface would show literally
+        val encoded = URLEncoder.encode(query, "UTF-8").replace("+", "%20")
         if (shortcut == null) {
             openUrl("https://www.google.com/search?q=$encoded", OPENER_LAUNCHER)
         } else {
-            openUrl(shortcut.search.replace("%s", encoded), shortcut.opener)
+            openUrl(shortcut.search.replace("%s", encoded), shortcut.opener, query)
         }
     }
 
@@ -815,6 +844,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     companion object {
         private const val BROWSER4K = "local.chromebox.browser4k"
+        private const val YOUTUBE_TV_APP = "com.google.android.youtube.tv"
         private const val MAX_LISTEN_MS = 15_000L
         private const val UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000L
         private val DIALOG_THEME = android.R.style.Theme_Material_Dialog_Alert

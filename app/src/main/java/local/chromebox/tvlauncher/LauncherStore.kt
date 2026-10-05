@@ -35,6 +35,7 @@ class LauncherStore(context: Context) {
         set(value) = prefs.edit().putString(KEY_UPDATE_URL, value).apply()
 
     fun webShortcuts(): MutableList<WebShortcut> {
+        migrateYouTubeToTv()
         val raw = prefs.getString(KEY_WEB, null) ?: return defaultWeb()
         return try {
             val array = JSONArray(raw)
@@ -50,6 +51,25 @@ class LauncherStore(context: Context) {
             }
         } catch (e: JSONException) {
             defaultWeb()
+        }
+    }
+
+    /**
+     * Version 1.0.6 moved the YouTube page to YouTube's TV interface. Saved YouTube pages that
+     * still open the regular site inside the launcher switch over once.
+     */
+    private fun migrateYouTubeToTv() {
+        if (prefs.getBoolean(KEY_YOUTUBE_TV_MIGRATED, false)) return
+        prefs.edit().putBoolean(KEY_YOUTUBE_TV_MIGRATED, true).apply()
+        if (prefs.getString(KEY_WEB, null) == null) return
+        updateWeb { list ->
+            for (i in list.indices) {
+                val shortcut = list[i]
+                val host = android.net.Uri.parse(shortcut.url).host.orEmpty()
+                if (host.endsWith("youtube.com") && shortcut.opener == OPENER_LAUNCHER) {
+                    list[i] = shortcut.copy(url = YOUTUBE_TV_URL, opener = OPENER_YOUTUBE_TV, search = YOUTUBE_TV_SEARCH)
+                }
+            }
         }
     }
 
@@ -110,18 +130,20 @@ class LauncherStore(context: Context) {
 
     private fun defaultWeb() = mutableListOf(
         WebShortcut(newId(), "Film4K", "https://film4k.net/", OPENER_LAUNCHER, ""),
-        WebShortcut(
-            newId(), "YouTube", "https://www.youtube.com/", OPENER_LAUNCHER,
-            "https://www.youtube.com/results?search_query=%s"
-        )
+        WebShortcut(newId(), "YouTube", YOUTUBE_TV_URL, OPENER_YOUTUBE_TV, YOUTUBE_TV_SEARCH)
     )
 
     companion object {
         /** Plays the page in the launcher's own web player. */
         const val OPENER_LAUNCHER = "launcher"
+        /** YouTube's TV interface, driven by the remote, in the launcher's web player. */
+        const val OPENER_YOUTUBE_TV = "youtube_tv"
         const val OPENER_BROWSER4K = "browser4k"
         const val OPENER_CHROME = "chrome"
-        val OPENERS = listOf(OPENER_LAUNCHER, OPENER_BROWSER4K, OPENER_CHROME)
+        val OPENERS = listOf(OPENER_LAUNCHER, OPENER_YOUTUBE_TV, OPENER_BROWSER4K, OPENER_CHROME)
+
+        const val YOUTUBE_TV_URL = "https://www.youtube.com/tv"
+        const val YOUTUBE_TV_SEARCH = "https://www.youtube.com/tv#/search?q=%s"
 
         private const val KEY_FULLSCREEN = "fullscreen"
         private const val KEY_REMOTE = "remote_address"
@@ -129,6 +151,7 @@ class LauncherStore(context: Context) {
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_UPDATE_URL = "update_url"
         private const val KEY_SEPARATE_WINDOW = "separate_window_apps"
+        private const val KEY_YOUTUBE_TV_MIGRATED = "youtube_tv_migrated"
 
         /** updates.json attached to the latest GitHub release (see scripts/release.sh). */
         const val DEFAULT_UPDATE_URL =
