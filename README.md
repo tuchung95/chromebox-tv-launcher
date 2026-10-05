@@ -11,7 +11,9 @@ Giao diện theo phong cách Google TV, dựng bằng [Compose for TV](https://d
 - **Ứng dụng mới cài tự lên Yêu thích.** Giống Android TV, ứng dụng vừa cài được thêm vào đầu hàng Yêu thích và băng chuyền ở Trang chủ. Mở menu của ô để bỏ ghim nếu không muốn.
 - **Mở ngay trong launcher.** Ứng dụng và trang web hiện trong chính cửa sổ launcher, bấm Quay lại để về màn hình chính. Trang web phát bằng trình phát dựng sẵn, có chặn popup quảng cáo và xem video toàn màn hình. Mỗi ô web cũng có thể chọn mở bằng Chrome của ChromeOS hoặc 4K Browser.
 - **YouTube giao diện TV.** Ô YouTube mở giao diện YouTube dành cho TV ngay trong launcher, điều khiển hoàn toàn bằng remote, đăng nhập bằng mã trên điện thoại qua yt.be/activate. Phím Quay lại điều hướng trong YouTube, nhấn giữ Quay lại để về màn hình chính. Launcher trả lời YouTube về khả năng phát video giống một TV thật, nên YouTube cho chọn tới 4K (2160p60). Video dùng VP9 hoặc H.264 ở dạng SDR, là những định dạng GPU của Chromebox giải mã được. AV1 và HDR được ẩn đi. Nếu máy có app YouTube cho Android TV, như trên Android TV box, launcher mở app đó.
+- **SmartTube.** Cài đặt › SmartTube tải bản chính thức mới nhất của [SmartTube](https://github.com/yuliskov/SmartTube), ứng dụng YouTube mã nguồn mở cho TV có chặn quảng cáo, kiểm tra mã SHA-256 do GitHub công bố rồi cài. Khi đã cài, ô YouTube mở bằng SmartTube, kể cả tìm kiếm bằng giọng nói. Trang chủ có thêm hàng SmartTube để mở thẳng Đăng ký, Lịch sử, Danh sách phát và các mục khác. Muốn quay lại giao diện YouTube TV trên web, chọn trong menu của ô YouTube.
 - **Ra lệnh bằng giọng nói qua remote Xiaomi.** Hỗ trợ remote Bluetooth Xiaomi 2 và 2 Pro. Tiếng Việt được nhận dạng ngay trên máy, không cần mạng.
+- **Gán nút remote.** Cài đặt › Nút remote: bấm một nút trên remote rồi chọn việc nó làm, như nói lệnh, về Trang chủ, mở tất cả ứng dụng, mở một ứng dụng hay một trang web, bật tắt toàn màn hình, hoặc tắt hẳn nút đó. Nút đã gán dùng được cả khi đang xem trang web. Các phím mũi tên, OK, Quay lại, âm lượng và phím gõ chữ không gán được. Những nút ChromeOS giữ cho riêng nó, thường là micro, Home và nguồn, không đến được launcher nên cũng không gán được.
 - **Tự cập nhật.** Ứng dụng tự kiểm tra GitHub Releases và cài bản mới sau một lần xác nhận, không cần cắm cáp hay dùng adb.
 - **Toàn màn hình.** Bấm F11 hoặc nút ở góc trên để chuyển chế độ toàn màn hình.
 
@@ -35,7 +37,7 @@ Các lần sau, bấm nút Cập nhật trong ứng dụng là đủ. Lần cậ
 ## Remote giọng nói
 
 1. Ghép đôi remote Xiaomi trong Cài đặt › Bluetooth của ChromeOS.
-2. Mở Chromebox TV. Nút Remote ở góc trên chuyển sang "sẵn sàng" khi kết nối xong.
+2. Mở Chromebox TV. Mục Cài đặt › Remote giọng nói chuyển sang "sẵn sàng" khi kết nối xong.
 3. Bấm nút micro trên remote rồi nói.
 
 | Câu nói | Kết quả |
@@ -50,6 +52,8 @@ Các lần sau, bấm nút Cập nhật trong ứng dụng là đủ. Lần cậ
 Một ô web tìm kiếm được bằng giọng nói khi ô đó có địa chỉ tìm kiếm chứa `%s`, ví dụ `youtube.com/results?search_query=%s`.
 
 Kết nối remote được thử theo đặc tả giao thức, nhưng chưa được kiểm chứng trên mọi phiên bản ChromeOS. Nếu nút Remote báo "chưa ghép đôi" dù remote đã ghép, hãy chọn đúng remote trong mục Remote › Chọn remote.
+
+Nếu nút micro lại mở Trợ lý hoặc trình chạy của ChromeOS, hãy gán một nút khác thành "Nói lệnh" trong Cài đặt › Nút remote. Launcher tự mở micro của remote qua Bluetooth, giống nút micro trên màn hình của Android TV. Mục Cài đặt › Remote giọng nói có nút Thử micro và nhật ký kết nối Bluetooth, cho biết kết nối dừng ở bước nào.
 
 ## Build từ mã nguồn
 
