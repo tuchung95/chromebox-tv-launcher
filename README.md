@@ -2,15 +2,17 @@
 
 Màn hình chính kiểu TV cho Chromebox chạy ChromeOS. Ứng dụng chạy trong lớp Android của ChromeOS và được thiết kế để điều khiển từ xa trên TV: các ô lớn, đồng hồ to, dùng được phím mũi tên, chuột hoặc remote Bluetooth.
 
+Giao diện dùng [Compose for TV](https://developer.android.com/training/tv/playback/compose) (Material 3 for TV) của Google và theo [hướng dẫn thiết kế Android TV](https://developer.android.com/design/ui/tv/guides/foundations/design-for-tv): bố cục 960 × 540 dp với lề an toàn 5%, thẻ 16:9 theo lưới 3 và 4 thẻ mỗi hàng, thẻ đang chọn được phóng to, có viền và glow, và mỗi hàng nhớ thẻ đang chọn khi di chuyển lên xuống.
+
 ## Tính năng
 
 - **Ba hàng ô.** Hàng "Xem ngay" chứa các trang web hay xem. Hàng "Yêu thích" chứa các ứng dụng được ghim. Hàng "Tất cả ứng dụng" chứa mọi ứng dụng Android đã cài.
-- **Mở trang web theo trình duyệt tùy chọn.** Mỗi ô web mở bằng Chrome của ChromeOS hoặc bằng 4K Browser nếu đã cài.
+- **Mở ngay trong launcher.** Ứng dụng và trang web hiện trong chính cửa sổ launcher, bấm Quay lại để về màn hình chính. Trang web phát bằng trình phát dựng sẵn, có chặn popup quảng cáo và xem video toàn màn hình. Mỗi ô web cũng có thể chọn mở bằng Chrome của ChromeOS hoặc 4K Browser.
 - **Ra lệnh bằng giọng nói qua remote Xiaomi.** Hỗ trợ remote Bluetooth Xiaomi 2 và 2 Pro. Tiếng Việt được nhận dạng ngay trên máy, không cần mạng.
 - **Tự cập nhật.** Ứng dụng tự kiểm tra GitHub Releases và cài bản mới sau một lần xác nhận, không cần cắm cáp hay dùng adb.
 - **Toàn màn hình.** Bấm F11 hoặc nút ở góc trên để chuyển chế độ toàn màn hình.
 
-Để mở menu của một ô, bấm phím Menu trên remote, nhấp chuột phải hoặc nhấn giữ. Menu cho phép ghim, đổi thứ tự, sửa hoặc xóa ô.
+Để mở menu của một ô, bấm phím Menu trên remote, nhấp chuột phải hoặc nhấn giữ. Menu cho phép ghim, đổi thứ tự, sửa hoặc xóa ô. Nếu một ứng dụng chạy không ổn khi mở trong launcher, chọn "Mở trong cửa sổ riêng" trong menu của nó.
 
 ## Cài đặt
 

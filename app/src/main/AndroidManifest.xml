@@ -66,6 +66,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Web pages played inside the launcher's window -->
+        <activity
+            android:name=".WebPlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="false" />
+
         <receiver
             android:name=".InstallResultReceiver"
             android:exported="false" />

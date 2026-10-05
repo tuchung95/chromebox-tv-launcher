@@ -19,11 +19,12 @@
     <string name="field_title">Tên hiển thị</string>
     <string name="field_url">Địa chỉ, ví dụ film4k.net</string>
     <string name="field_search" formatted="false">Tìm kiếm (tùy chọn), ví dụ youtube.com/results?search_query=%s</string>
+    <string name="opener_launcher">Mở ngay trong launcher</string>
     <string name="opener_browser4k">Mở bằng 4K Browser</string>
     <string name="opener_chrome">Mở bằng Chrome</string>
+    <string name="name_launcher">Launcher</string>
     <string name="name_browser4k">4K Browser</string>
     <string name="name_chrome">Chrome</string>
-    <string name="open_with">Mở bằng %1$s</string>
     <string name="error_url">Địa chỉ chưa đúng</string>
     <string name="error_search" formatted="false">Địa chỉ tìm kiếm phải có %s ở chỗ đặt từ khóa</string>
     <string name="delete_confirm">Xóa “%1$s” khỏi màn hình chính?</string>
@@ -34,6 +35,10 @@
     <string name="move_left">Chuyển sang trái</string>
     <string name="move_right">Chuyển sang phải</string>
     <string name="app_info">Thông tin ứng dụng</string>
+    <string name="open_in_window">Mở trong cửa sổ riêng</string>
+    <string name="open_in_launcher">Mở trong launcher</string>
+    <string name="web_back_hint">Bấm Quay lại để về màn hình chính</string>
+    <string name="web_renderer_restarted">Trình phát bị lỗi và đã được tải lại</string>
     <string name="edit">Sửa</string>
     <string name="delete">Xóa</string>
     <string name="save">Lưu</string>

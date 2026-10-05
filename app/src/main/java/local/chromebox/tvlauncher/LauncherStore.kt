@@ -87,27 +87,48 @@ class LauncherStore(context: Context) {
         prefs.edit().putString(KEY_FAVORITES, JSONArray(list.distinct()).toString()).apply()
     }
 
+    /** Packages the user chose to open in their own window instead of inside the launcher. */
+    fun separateWindowApps(): Set<String> {
+        val raw = prefs.getString(KEY_SEPARATE_WINDOW, null) ?: return emptySet()
+        return try {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.getString(it) }.toSet()
+        } catch (e: JSONException) {
+            emptySet()
+        }
+    }
+
+    fun setSeparateWindow(pkg: String, separate: Boolean) {
+        val set = separateWindowApps().toMutableSet()
+        if (separate) set.add(pkg) else set.remove(pkg)
+        prefs.edit().putString(KEY_SEPARATE_WINDOW, JSONArray(set.toList()).toString()).apply()
+    }
+
     /** Changes whenever the shortcuts or favorites change; used to skip needless redraws. */
     fun signature(): String =
         prefs.getString(KEY_WEB, "") + "|" + prefs.getString(KEY_FAVORITES, "")
 
     private fun defaultWeb() = mutableListOf(
-        WebShortcut(newId(), "Film4K", "https://film4k.net/", OPENER_BROWSER4K, ""),
+        WebShortcut(newId(), "Film4K", "https://film4k.net/", OPENER_LAUNCHER, ""),
         WebShortcut(
-            newId(), "YouTube", "https://www.youtube.com/", OPENER_CHROME,
+            newId(), "YouTube", "https://www.youtube.com/", OPENER_LAUNCHER,
             "https://www.youtube.com/results?search_query=%s"
         )
     )
 
     companion object {
+        /** Plays the page in the launcher's own web player. */
+        const val OPENER_LAUNCHER = "launcher"
         const val OPENER_BROWSER4K = "browser4k"
         const val OPENER_CHROME = "chrome"
+        val OPENERS = listOf(OPENER_LAUNCHER, OPENER_BROWSER4K, OPENER_CHROME)
 
         private const val KEY_FULLSCREEN = "fullscreen"
         private const val KEY_REMOTE = "remote_address"
         private const val KEY_WEB = "web_shortcuts"
         private const val KEY_FAVORITES = "favorites"
         private const val KEY_UPDATE_URL = "update_url"
+        private const val KEY_SEPARATE_WINDOW = "separate_window_apps"
 
         /** updates.json attached to the latest GitHub release (see scripts/release.sh). */
         const val DEFAULT_UPDATE_URL =

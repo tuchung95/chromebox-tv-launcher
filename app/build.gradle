@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 // Raised by scripts/release.sh on every release
@@ -49,6 +50,10 @@ android {
         }
     }
 
+    buildFeatures {
+        compose = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -85,6 +90,13 @@ tasks.register('downloadSpeechModel') {
 tasks.named('preBuild') { dependsOn 'downloadSpeechModel' }
 
 dependencies {
+    // Google's Compose for TV components (Material 3 for TV)
+    implementation platform('androidx.compose:compose-bom:2026.06.01')
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.tv:tv-material:1.1.0'
+    implementation 'androidx.activity:activity-compose:1.13.0'
+
     // Offline speech recognition (Apache-2.0)
     implementation 'com.alphacephei:vosk-android:0.3.75'
     implementation 'net.java.dev.jna:jna:5.18.1@aar'
