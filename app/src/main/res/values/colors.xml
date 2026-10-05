@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_top">#FF121620</color>
+    <color name="bg_bottom">#FF07080C</color>
+    <color name="surface">#FF1D2230</color>
+    <color name="card">#FF171B25</color>
+    <color name="line">#FF2C3242</color>
+    <color name="text">#FFF2F4F8</color>
+    <color name="text_dim">#FF9AA3B4</color>
+    <color name="accent">#FF4FB3FF</color>
+    <color name="accent_soft">#664FB3FF</color>
+    <color name="scrim">#D905070B</color>
+    <color name="badge">#40000000</color>
+</resources>

@@ -1,0 +1,19 @@
+# Build output
+.gradle/
+.kotlin/
+build/
+*.apk
+*.aab
+
+# Local machine settings
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+# Downloaded at build time (see app/build.gradle)
+app/src/main/assets/vosk-model-*.zip
+
+# Signing keys never go in git
+*.jks
+*.keystore

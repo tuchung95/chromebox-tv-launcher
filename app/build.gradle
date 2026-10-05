@@ -1,0 +1,92 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Raised by scripts/release.sh on every release
+def versionProps = new Properties()
+rootProject.file('version.properties').withInputStream { versionProps.load(it) }
+
+// Release signing key, kept outside the repository. Every update must be signed with the
+// same key, so back up both files. Without them, builds fall back to the debug key.
+def releaseSigningFile = new File(System.getProperty('user.home'), '.android/chromebox-tv-release.properties')
+def releaseSigning = new Properties()
+if (releaseSigningFile.exists()) releaseSigningFile.withInputStream { releaseSigning.load(it) }
+
+android {
+    namespace = 'local.chromebox.tvlauncher'
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = 'local.chromebox.tvlauncher'
+        // ARC++ on ChromeOS runs Android 9 (API 28) or 11 (API 30)
+        minSdk = 24
+        targetSdk = 36
+        versionCode = versionProps['VERSION_CODE'] as Integer
+        versionName = versionProps['VERSION_NAME']
+        ndk {
+            // Intel Chromebox first; arm64 kept for Android TV boxes
+            abiFilters 'x86_64', 'x86', 'arm64-v8a'
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (releaseSigningFile.exists()) {
+                storeFile = file(releaseSigning['storeFile'])
+                storePassword = releaseSigning['storePassword']
+                keyAlias = releaseSigning['keyAlias']
+                keyPassword = releaseSigning['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Vosk loads its native library through JNA reflection, so no code shrinking
+            minifyEnabled = false
+            signingConfig = releaseSigningFile.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    androidResources {
+        // The bundled speech model is already a zip archive
+        noCompress += ['zip']
+    }
+}
+
+// The Vietnamese speech model (Apache-2.0, about 32 MB) is downloaded at build time
+// instead of being stored in git.
+def speechModel = file('src/main/assets/vosk-model-small-vn-0.4.zip')
+def speechModelUrl = 'https://alphacephei.com/vosk/models/vosk-model-small-vn-0.4.zip'
+def speechModelSha256 = 'efe5c8494212110471a79befc48c79da679e5b1fc52a4ffb500222ff86d622e5'
+
+tasks.register('downloadSpeechModel') {
+    outputs.file(speechModel)
+    onlyIf { !speechModel.exists() }
+    doLast {
+        speechModel.parentFile.mkdirs()
+        def partial = new File(speechModel.path + '.part')
+        new URL(speechModelUrl).withInputStream { input -> partial.withOutputStream { it << input } }
+        def digest = java.security.MessageDigest.getInstance('SHA-256').digest(partial.bytes).encodeHex().toString()
+        if (digest != speechModelSha256) {
+            partial.delete()
+            throw new GradleException("Speech model checksum mismatch: $digest")
+        }
+        partial.renameTo(speechModel)
+    }
+}
+
+tasks.named('preBuild') { dependsOn 'downloadSpeechModel' }
+
+dependencies {
+    // Offline speech recognition (Apache-2.0)
+    implementation 'com.alphacephei:vosk-android:0.3.75'
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+
+    testImplementation 'junit:junit:4.13.2'
+}

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Chromebox TV</string>
+
+    <!-- Rows -->
+    <string name="row_watch">Xem ngay</string>
+    <string name="row_favorites">Yêu thích</string>
+    <string name="row_apps">Tất cả ứng dụng</string>
+
+    <!-- Header -->
+    <string name="fullscreen_enter">Toàn màn hình</string>
+    <string name="fullscreen_exit">Thu nhỏ cửa sổ</string>
+    <string name="update_button">Cập nhật</string>
+    <string name="update_button_available">Có bản mới</string>
+
+    <!-- Web shortcuts -->
+    <string name="add_web">Thêm trang web</string>
+    <string name="edit_web">Sửa trang web</string>
+    <string name="field_title">Tên hiển thị</string>
+    <string name="field_url">Địa chỉ, ví dụ film4k.net</string>
+    <string name="field_search" formatted="false">Tìm kiếm (tùy chọn), ví dụ youtube.com/results?search_query=%s</string>
+    <string name="opener_browser4k">Mở bằng 4K Browser</string>
+    <string name="opener_chrome">Mở bằng Chrome</string>
+    <string name="name_browser4k">4K Browser</string>
+    <string name="name_chrome">Chrome</string>
+    <string name="open_with">Mở bằng %1$s</string>
+    <string name="error_url">Địa chỉ chưa đúng</string>
+    <string name="error_search" formatted="false">Địa chỉ tìm kiếm phải có %s ở chỗ đặt từ khóa</string>
+    <string name="delete_confirm">Xóa “%1$s” khỏi màn hình chính?</string>
+
+    <!-- Menus and dialogs -->
+    <string name="pin">Thêm vào Yêu thích</string>
+    <string name="unpin">Bỏ khỏi Yêu thích</string>
+    <string name="move_left">Chuyển sang trái</string>
+    <string name="move_right">Chuyển sang phải</string>
+    <string name="app_info">Thông tin ứng dụng</string>
+    <string name="edit">Sửa</string>
+    <string name="delete">Xóa</string>
+    <string name="save">Lưu</string>
+    <string name="cancel">Hủy</string>
+    <string name="close">Đóng</string>
+    <string name="browser4k_missing">Chưa cài 4K Browser, đang mở bằng Chrome</string>
+    <string name="no_browser">Không tìm thấy trình duyệt</string>
+    <string name="app_missing">Không mở được ứng dụng này</string>
+
+    <!-- Remote -->
+    <string name="remote_title">Remote giọng nói</string>
+    <string name="remote_ready">Remote: sẵn sàng</string>
+    <string name="remote_loading_voice">Remote: đang tải giọng nói…</string>
+    <string name="remote_voice_failed">Remote: lỗi bộ nhận dạng</string>
+    <string name="remote_connecting">Remote: đang kết nối…</string>
+    <string name="remote_not_found">Remote: chưa ghép đôi</string>
+    <string name="remote_no_bluetooth">Remote: Bluetooth đang tắt</string>
+    <string name="remote_no_permission">Remote: cần quyền Bluetooth</string>
+    <string name="remote_no_voice">Remote: không có dịch vụ giọng nói</string>
+    <string name="remote_help">Ghép đôi remote Xiaomi trong Cài đặt › Bluetooth của ChromeOS. Khi Chromebox TV đang mở, bấm nút micro trên remote rồi nói, ví dụ:\n• mở YouTube\n• tìm trên YouTube nhạc Trịnh\n• mở VLC</string>
+    <string name="remote_reconnect">Kết nối lại</string>
+    <string name="remote_choose">Chọn remote</string>
+    <string name="remote_auto">Tự động (remote Xiaomi)</string>
+
+    <!-- Voice -->
+    <string name="voice_opening">Đang mở micro…</string>
+    <string name="voice_listening">Đang nghe…</string>
+    <string name="voice_model_loading">Đang tải bộ nhận dạng giọng nói…</string>
+    <string name="voice_recognizing">Đang nhận dạng…</string>
+    <string name="voice_hint">Hãy nói, ví dụ: mở YouTube</string>
+    <string name="voice_not_heard">Không nghe rõ, hãy thử lại</string>
+    <string name="voice_model_not_ready">Bộ nhận dạng giọng nói chưa sẵn sàng, thử lại sau giây lát</string>
+    <string name="voice_choose">Bạn muốn làm gì?</string>
+    <string name="voice_remote_offline">Remote chưa kết nối. Chọn mục Remote ở góc trên để kiểm tra.</string>
+    <string name="voice_opening_target">Đang mở %1$s</string>
+    <string name="voice_searching">Đang tìm “%1$s” trên %2$s</string>
+    <string name="search_on">Tìm trên %1$s</string>
+
+    <!-- Updates (the launcher updates itself only) -->
+    <string name="update_title">Cập nhật Chromebox TV</string>
+    <string name="update_checking">Đang kiểm tra bản mới…</string>
+    <string name="update_none">Chromebox TV đã là bản mới nhất (%1$s).</string>
+    <string name="update_available">Có bản mới: %1$s → %2$s.\nChromebox TV sẽ đóng trong lúc cập nhật. Nếu nó không tự mở lại, hãy mở từ kệ ứng dụng.</string>
+    <string name="update_now">Cập nhật</string>
+    <string name="update_error">Không kết nối được máy chủ cập nhật:\n%1$s\n\n%2$s</string>
+    <string name="update_server">Máy chủ cập nhật</string>
+    <string name="update_server_hint">Địa chỉ file updates.json</string>
+    <string name="update_retry">Kiểm tra lại</string>
+    <string name="update_downloading">Đang tải bản %1$s… %2$d%%</string>
+    <string name="update_installing">Đang chuẩn bị cài…</string>
+    <string name="update_installed">Đã cập nhật xong</string>
+    <string name="update_cancelled">Đã hủy cập nhật</string>
+    <string name="update_failed">Cập nhật thất bại: %1$s</string>
+    <string name="update_bad_hash">File tải về bị lỗi, mã kiểm tra không khớp</string>
+    <string name="update_bad_package">File tải về không đúng ứng dụng hoặc phiên bản</string>
+    <string name="update_permission">Để cập nhật, hãy cho phép Chromebox TV cài ứng dụng. Bật “Cho phép từ nguồn này” trong màn hình tiếp theo rồi quay lại.</string>
+    <string name="update_permission_open">Mở cài đặt</string>
+</resources>

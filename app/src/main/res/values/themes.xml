@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">@color/bg_top</item>
+        <item name="android:colorPrimaryDark">@color/bg_top</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@drawable/screen_bg</item>
+        <item name="android:statusBarColor">@color/bg_top</item>
+        <item name="android:navigationBarColor">@color/bg_bottom</item>
+    </style>
+
+    <style name="HeaderButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">18dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/text</item>
+        <item name="android:background">@drawable/button_bg</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+        <item name="android:singleLine">true</item>
+    </style>
+</resources>

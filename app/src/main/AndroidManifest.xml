@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Bluetooth LE link to the Xiaomi voice remote (ATV Voice service) -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- In-app updates from the update server on the local network -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false" />
+
+    <!-- Package visibility: list launchable apps and detect the 4K Browser -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <package android:name="local.chromebox.browser4k" />
+    </queries>
+
+    <application
+        android:banner="@drawable/banner"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:resizeableActivity="true"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:windowSoftInputMode="adjustPan">
+
+            <layout
+                android:defaultHeight="720dp"
+                android:defaultWidth="1280dp"
+                android:gravity="center" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
+
+        <!-- MY_PACKAGE_REPLACED is a protected broadcast: only the system can send it -->
+        <receiver
+            android:name=".UpdatedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
