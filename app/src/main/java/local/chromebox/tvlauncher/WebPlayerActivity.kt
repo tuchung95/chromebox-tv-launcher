@@ -216,7 +216,7 @@ class WebPlayerActivity : Activity() {
             userAgentString = if (tvMode) TV_USER_AGENT else desktopUserAgent()
         }
         if (tvMode && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(wv, HIDE_AV1_SCRIPT, YOUTUBE_ORIGINS)
+            WebViewCompat.addDocumentStartJavaScript(wv, MEDIA_CAPABILITIES_SCRIPT, YOUTUBE_ORIGINS)
         }
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
@@ -398,31 +398,83 @@ class WebPlayerActivity : Activity() {
         private val YOUTUBE_ORIGINS = setOf("https://www.youtube.com", "https://youtube.com", "https://m.youtube.com")
 
         /**
-         * The Chromebox's Celeron decodes AV1 on the CPU only, which stutters. Reporting AV1 as
-         * unsupported makes YouTube choose VP9 or H.264, which the GPU decodes up to 4K.
+         * Answers YouTube's format questions the way a real TV does.
+         *
+         * YouTube's TV interface asks MediaSource.isTypeSupported about types with extra
+         * parameters (width, height, framerate, bitrate, eotf, channels...), and first checks
+         * that nonsense such as eotf=catavision is refused. Chromium ignores those parameters
+         * and says yes to everything, so YouTube distrusts the answers and caps quality at
+         * 720p. Here the parameters are checked against what the Chromebox can play:
+         * - VP9 up to 3840 x 2160 and H.264 up to 1080p, at up to 60 fps;
+         * - SDR only: HDR streams are 10-bit VP9 that would have to be tone-mapped for the SDR
+         *   picture, and every HDR video on YouTube also has SDR streams;
+         * - stereo audio;
+         * - no AV1, which the Celeron decodes on the CPU only, so YouTube streams VP9 or H.264.
          */
-        private val HIDE_AV1_SCRIPT = """
+        private val MEDIA_CAPABILITIES_SCRIPT = """
             (function () {
-              if (window.__chromeboxHideAv1) return;
-              window.__chromeboxHideAv1 = true;
-              var blocked = /av01|\bav1\b/i;
+              if (window.__chromeboxMedia) return;
+              window.__chromeboxMedia = true;
+              // AV1, and VP9 profiles 2 and 3 (10-bit, which YouTube uses for HDR)
+              var refused = /av01|\bav1\b|vp09\.0[23]\./i;
+
+              // 'video/webm; codecs="vp9"; width=3840' -> { codecs: 'vp9', width: '3840' }
+              function parameters(type) {
+                var params = {};
+                String(type).split(';').slice(1).forEach(function (part) {
+                  var i = part.indexOf('=');
+                  if (i > 0) params[part.slice(0, i).trim().toLowerCase()] = part.slice(i + 1).trim().replace(/^"|"$/g, '');
+                });
+                return params;
+              }
+
+              function within(value, max) {
+                var n = Number(value);
+                return isFinite(n) && n > 0 && n <= max;
+              }
+
+              // False when an extended parameter asks for more than the Chromebox can play
+              function parametersOk(type) {
+                var p = parameters(type);
+                var h264 = /avc1|avc3/i.test(p.codecs || '');
+                if ('width' in p && !within(p.width, h264 ? 1920 : 3840)) return false;
+                if ('height' in p && !within(p.height, h264 ? 1080 : 2160)) return false;
+                if ('framerate' in p && !within(p.framerate, 60)) return false;
+                if ('bitrate' in p && !within(p.bitrate, 100000000)) return false;
+                if ('eotf' in p && p.eotf.toLowerCase() !== 'bt709') return false;
+                if ('decode-to-texture' in p && p['decode-to-texture'] !== 'false') return false;
+                if ('experimental' in p && p.experimental !== 'allowed') return false;
+                if ('cryptoblockformat' in p && p.cryptoblockformat !== 'subsample') return false;
+                if ('channels' in p && !within(p.channels, 2)) return false;
+                return true;
+              }
+
               var source = window.MediaSource;
               if (source && source.isTypeSupported) {
                 var isTypeSupported = source.isTypeSupported.bind(source);
-                source.isTypeSupported = function (type) { return blocked.test(type) ? false : isTypeSupported(type); };
+                source.isTypeSupported = function (type) {
+                  if (refused.test(type) || !parametersOk(type)) return false;
+                  return isTypeSupported(type);
+                };
               }
               var capabilities = navigator.mediaCapabilities;
               if (capabilities && capabilities.decodingInfo) {
                 var decodingInfo = capabilities.decodingInfo.bind(capabilities);
                 capabilities.decodingInfo = function (config) {
-                  var type = (config && config.video && config.video.contentType) || '';
-                  if (blocked.test(type)) return Promise.resolve({ supported: false, smooth: false, powerEfficient: false });
+                  var video = (config && config.video) || {};
+                  var hdr = video.transferFunction && video.transferFunction !== 'srgb';
+                  if (hdr || refused.test(video.contentType || '')) {
+                    return Promise.resolve({ supported: false, smooth: false, powerEfficient: false });
+                  }
                   return decodingInfo(config);
                 };
               }
               var canPlayType = HTMLMediaElement.prototype.canPlayType;
-              HTMLMediaElement.prototype.canPlayType = function (type) { return blocked.test(type) ? '' : canPlayType.call(this, type); };
-              console.log('chromebox: AV1 hidden');
+              HTMLMediaElement.prototype.canPlayType = function (type) {
+                if (refused.test(type) || !parametersOk(type)) return '';
+                return canPlayType.call(this, type);
+              };
+              console.log('chromebox: TV media capabilities active');
             })();
         """.trimIndent()
         private const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
