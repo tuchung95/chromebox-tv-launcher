@@ -80,6 +80,20 @@ class LauncherStore(context: Context) {
         }
     }
 
+    /**
+     * Once SmartTube is installed, the YouTube pages that open YouTube's TV interface switch to
+     * it, a single time; the card menu can switch a page back.
+     */
+    fun preferSmartTube() {
+        if (prefs.getBoolean(KEY_SMARTTUBE_SWITCHED, false)) return
+        prefs.edit().putBoolean(KEY_SMARTTUBE_SWITCHED, true).apply()
+        updateWeb { list ->
+            for (i in list.indices) {
+                if (list[i].opener == OPENER_YOUTUBE_TV) list[i] = list[i].copy(opener = OPENER_SMARTTUBE)
+            }
+        }
+    }
+
     /** Version 1.0.8 dropped a page that earlier versions pinned by default. */
     private fun removeRetiredDefaults() {
         if (prefs.getBoolean(KEY_RETIRED_REMOVED, false)) return
@@ -167,6 +181,29 @@ class LauncherStore(context: Context) {
         prefs.edit().putString(KEY_KNOWN_APPS, JSONArray((known + installed).toList()).toString()).apply()
     }
 
+    /** Remote buttons the viewer assigned, by Android key code. */
+    fun buttonActions(): Map<Int, ButtonAction> {
+        val raw = prefs.getString(KEY_BUTTONS, null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(raw)
+            o.keys().asSequence().mapNotNull { key ->
+                val code = key.toIntOrNull() ?: return@mapNotNull null
+                ButtonAction.parse(o.optString(key))?.let { code to it }
+            }.toMap()
+        } catch (e: JSONException) {
+            emptyMap()
+        }
+    }
+
+    /** Assigns [action] to the button, or clears the button when [action] is null. */
+    fun setButtonAction(keyCode: Int, action: ButtonAction?) {
+        val map = buttonActions().toMutableMap()
+        if (action == null) map.remove(keyCode) else map[keyCode] = action
+        val o = JSONObject()
+        map.forEach { (code, value) -> o.put(code.toString(), value.value) }
+        prefs.edit().putString(KEY_BUTTONS, o.toString()).apply()
+    }
+
     /** Changes whenever the shortcuts or favorites change; used to skip needless redraws. */
     fun signature(): String =
         prefs.getString(KEY_WEB, "") + "|" + prefs.getString(KEY_FAVORITES, "")
@@ -180,9 +217,11 @@ class LauncherStore(context: Context) {
         const val OPENER_LAUNCHER = "launcher"
         /** YouTube's TV interface, driven by the remote, in the launcher's web player. */
         const val OPENER_YOUTUBE_TV = "youtube_tv"
+        /** The SmartTube app, falling back to YouTube's TV interface when it is not installed. */
+        const val OPENER_SMARTTUBE = "smarttube"
         const val OPENER_BROWSER4K = "browser4k"
         const val OPENER_CHROME = "chrome"
-        val OPENERS = listOf(OPENER_LAUNCHER, OPENER_YOUTUBE_TV, OPENER_BROWSER4K, OPENER_CHROME)
+        val OPENERS = listOf(OPENER_LAUNCHER, OPENER_YOUTUBE_TV, OPENER_SMARTTUBE, OPENER_BROWSER4K, OPENER_CHROME)
 
         const val YOUTUBE_TV_URL = "https://www.youtube.com/tv"
         const val YOUTUBE_TV_SEARCH = "https://www.youtube.com/tv#/search?q=%s"
@@ -196,6 +235,8 @@ class LauncherStore(context: Context) {
         private const val KEY_YOUTUBE_TV_MIGRATED = "youtube_tv_migrated"
         private const val KEY_KNOWN_APPS = "known_apps"
         private const val KEY_WALLPAPER = "wallpaper"
+        private const val KEY_BUTTONS = "remote_buttons"
+        private const val KEY_SMARTTUBE_SWITCHED = "smarttube_switched"
 
         const val WALLPAPER_NONE = "none"
         const val WALLPAPER_AURORA = "aurora"

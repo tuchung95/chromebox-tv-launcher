@@ -2,6 +2,7 @@ package local.chromebox.tvlauncher
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -42,8 +43,12 @@ import androidx.webkit.WebViewFeature
  * not focused, a crashed renderer is replaced, and ad popups and app-link redirects are dropped.
  *
  * In TV mode ([EXTRA_TV_MODE]) the page is YouTube's TV interface: it gets a smart-TV user
- * agent, Back is passed to the page, holding Back returns to the launcher, and AV1 is hidden
- * so YouTube streams VP9 or H.264, which the Chromebox GPU decodes.
+ * agent, Back is passed to the page, holding Back returns to the launcher, and YouTube's format
+ * questions get a TV's answers, so it streams up to 4K in VP9 or H.264, which the Chromebox
+ * GPU decodes.
+ *
+ * Remote buttons assigned in the launcher's settings work here too: the player closes and the
+ * launcher runs the action.
  */
 class WebPlayerActivity : Activity() {
 
@@ -58,6 +63,7 @@ class WebPlayerActivity : Activity() {
     private var lastUrl = ""
     private var tvMode = false
     private var backLongPressed = false
+    private var buttons: Map<Int, ButtonAction> = emptyMap()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,13 +91,14 @@ class WebPlayerActivity : Activity() {
         }
     }
 
-    override fun onNewIntent(intent: android.content.Intent) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.dataString?.let { load(it) }
     }
 
     override fun onResume() {
         super.onResume()
+        buttons = LauncherStore(this).buttonActions()
         applyImmersive(true)
     }
 
@@ -178,6 +185,10 @@ class WebPlayerActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        buttons[event.keyCode]?.let { action ->
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) runInLauncher(action)
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             when {
                 event.keyCode == KeyEvent.KEYCODE_ESCAPE && customView != null -> {
@@ -189,6 +200,19 @@ class WebPlayerActivity : Activity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * The launcher is the root of this task, so starting it closes the player; it then runs the
+     * action. The player is always full screen, so the full-screen switch does nothing here.
+     */
+    private fun runInLauncher(action: ButtonAction) {
+        if (action == ButtonAction.Ignore || action == ButtonAction.Fullscreen) return
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_BUTTON_ACTION, action.value)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        )
     }
 
     private fun load(url: String) {

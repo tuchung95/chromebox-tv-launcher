@@ -41,8 +41,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENERS
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_BROWSER4K
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_LAUNCHER
+import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_SMARTTUBE
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_YOUTUBE_TV
+import java.io.IOException
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /**
@@ -79,6 +84,13 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     private var pendingVoice: Runnable? = null
     private val voiceTimeout = Runnable { remote.closeMicrophone() }
     private val hideVoiceRunnable = Runnable { hideVoice() }
+    private val micTimeout = Runnable { onMicSilent() }
+    private val voiceKeyFallback = Runnable { if (home.voice == null) startVoice() }
+
+    /** Remote buttons the viewer assigned, by key code. */
+    private var buttons: Map<Int, ButtonAction> = emptyMap()
+    /** A button pressed in the web player, run once the home screen is back. */
+    private var pendingButton: ButtonAction? = null
 
     private var availableUpdates: List<AppUpdate> = emptyList()
     private var lastUpdateCheck = 0L
@@ -97,6 +109,9 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         speech.load()
         remote = AtvvRemote(this, { store.remoteAddress }, this)
 
+        buttons = store.buttonActions()
+        updateButtonsLabel()
+        takeButtonAction(intent)
         home.fullscreen = store.fullscreen
         home.wallpaper = store.wallpaper
         if (store.wallpaper == LauncherStore.WALLPAPER_PHOTO) loadWallpaperPhoto()
@@ -114,11 +129,20 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         if (System.currentTimeMillis() - lastUpdateCheck > UPDATE_CHECK_INTERVAL_MS) checkUpdates(quiet = true)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeButtonAction(intent)
+    }
+
     override fun onResume() {
         super.onResume()
         applyFullscreen(store.fullscreen)
         updateRemoteLabel()
         refreshHome()
+        pendingButton?.let {
+            pendingButton = null
+            runButtonAction(it)
+        }
     }
 
     override fun onStop() {
@@ -142,6 +166,10 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
+        buttons[code]?.let { action ->
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) runButtonAction(action)
+            return true
+        }
         if (code in VOICE_KEYS) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) onVoiceKey()
             return true
@@ -179,6 +207,9 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     private fun refreshHome(force: Boolean = false) {
         val loaded = loadApps()
         store.pinNewlyInstalled(loaded.map { it.pkg }.toSet())
+        val smartTube = SmartTube.PACKAGES.firstOrNull { pkg -> loaded.any { it.pkg == pkg } }
+        if (smartTube != null) store.preferSmartTube()
+        home.smartTube = smartTube
         val signature = loaded.joinToString(",") { it.pkg + "/" + it.label } + "#" + store.signature()
         if (!force && signature == lastSignature) return
         lastSignature = signature
@@ -315,6 +346,11 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun openUrl(url: String, opener: String, query: String? = null) {
         val uri = Uri.parse(url)
+        if (opener == OPENER_SMARTTUBE) {
+            if (openInSmartTube(url, query)) return
+            toast(getString(R.string.smarttube_missing))
+            return openUrl(url, OPENER_YOUTUBE_TV, query)
+        }
         if (opener == OPENER_YOUTUBE_TV) {
             if (openYouTubeTvApp(query)) return
             val player = Intent(this, WebPlayerActivity::class.java)
@@ -355,6 +391,73 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             ?: packageManager.getLaunchIntentForPackage(YOUTUBE_TV_APP)
             ?: return false
         return startInLauncher(launch)
+    }
+
+    private fun smartTubePackage() = SmartTube.PACKAGES.firstOrNull { isInstalled(it) }
+
+    private fun launchIntentFor(pkg: String) =
+        packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg)
+
+    /** Opens SmartTube with the search for [query], the video in [url], or its home screen. */
+    private fun openInSmartTube(url: String, query: String?): Boolean {
+        val pkg = smartTubePackage() ?: return false
+        val target = if (query != null) SmartTube.searchUrl(encode(query)) else SmartTube.videoUrl(url)
+        val intent = target?.let { Intent(Intent.ACTION_VIEW, Uri.parse(it)).setPackage(pkg) }
+            ?: launchIntentFor(pkg)
+            ?: return false
+        return startInLauncher(intent)
+    }
+
+    override fun openSmartTube(section: SmartTube.Section) {
+        val pkg = smartTubePackage() ?: return toast(getString(R.string.smarttube_not_installed))
+        if (startInLauncher(Intent().setComponent(section.component(pkg)))) return
+        // An older SmartTube may lack the section; open the app instead
+        val launch = launchIntentFor(pkg)
+        if (launch == null || !startInLauncher(launch)) toast(getString(R.string.app_missing))
+    }
+
+    override fun smartTubeClicked() {
+        if (smartTubePackage() != null) {
+            openSmartTube(SmartTube.Section.HOME)
+            return
+        }
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.smarttube_install_title)
+            .setMessage(R.string.smarttube_install_message)
+            .setPositiveButton(R.string.smarttube_install) { _, _ -> installSmartTube() }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Downloads SmartTube's latest stable APK from its GitHub releases and installs it. */
+    private fun installSmartTube() {
+        if (!updates.canInstall()) return askInstallPermission()
+        val (dialog, status) = progressDialog(R.string.smarttube_install_title)
+        status.text = getString(R.string.smarttube_finding)
+        io.execute {
+            val failure = try {
+                val release = SmartTube.parseRelease(updates.fetchText(SmartTube.LATEST_RELEASE))
+                val asset = SmartTube.pickAsset(release.assets, Build.SUPPORTED_ABIS.toList())
+                    ?: throw IOException(getString(R.string.smarttube_no_apk))
+                val apk = updates.fetchApk(asset.url, asset.sha256, asset.name) { percent ->
+                    runOnUiThread { status.text = getString(R.string.update_downloading, release.version, percent) }
+                }
+                val pkg = updates.packageOf(apk)
+                if (pkg == null || pkg !in SmartTube.PACKAGES) {
+                    apk.delete()
+                    throw IOException(getString(R.string.update_bad_package))
+                }
+                runOnUiThread { status.text = getString(R.string.update_installing) }
+                updates.install(apk, pkg)
+                null
+            } catch (e: Exception) {
+                e.message ?: e.javaClass.simpleName
+            }
+            runOnUiThread {
+                dialog.dismiss()
+                failure?.let { toast(getString(R.string.smarttube_failed, it)) }
+            }
+        }
     }
 
     /** Opens in a separate task, which ChromeOS shows as its own window. */
@@ -400,6 +503,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         when (opener) {
             OPENER_LAUNCHER -> R.string.opener_launcher
             OPENER_YOUTUBE_TV -> R.string.opener_youtube_tv
+            OPENER_SMARTTUBE -> R.string.opener_smarttube
             OPENER_BROWSER4K -> R.string.opener_browser4k
             else -> R.string.opener_chrome
         }
@@ -621,13 +725,42 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             return
         }
         val status = getString(remoteStatusText()) + (remoteName?.let { " · $it" } ?: "")
+        // What the Bluetooth link went through, so a screenshot shows where it stops
+        val clock = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
+        val details = buildString {
+            append(status).append("\n\n").append(getString(R.string.remote_help))
+            append("\n\n").append(getString(R.string.remote_details, Build.VERSION.RELEASE, remote.knownDevices().size))
+            remote.recentEvents().forEach { entry ->
+                append('\n').append(clock.format(Date(entry.time))).append("  ").append(eventText(entry))
+            }
+        }
+        val ready = remoteState == AtvvRemote.State.READY
         AlertDialog.Builder(this, DIALOG_THEME)
             .setTitle(R.string.remote_title)
-            .setMessage(status + "\n\n" + getString(R.string.remote_help))
-            .setPositiveButton(R.string.remote_reconnect) { _, _ -> remote.restart() }
+            .setMessage(details)
+            .setPositiveButton(if (ready) R.string.remote_test_mic else R.string.remote_reconnect) { _, _ ->
+                if (ready) startVoice() else remote.restart()
+            }
             .setNeutralButton(R.string.remote_choose) { _, _ -> chooseRemote() }
             .setNegativeButton(R.string.close, null)
             .show()
+    }
+
+    private fun eventText(entry: AtvvRemote.LogEntry): String {
+        val detail = entry.detail.ifEmpty { "—" }
+        return when (entry.event) {
+            AtvvRemote.Event.NOT_FOUND -> getString(R.string.remote_event_not_found, detail)
+            AtvvRemote.Event.FOUND -> getString(R.string.remote_event_found, detail)
+            AtvvRemote.Event.CONNECTED -> getString(R.string.remote_event_connected)
+            AtvvRemote.Event.DISCONNECTED -> getString(R.string.remote_event_disconnected, detail)
+            AtvvRemote.Event.NO_VOICE_SERVICE -> getString(R.string.remote_event_no_voice, detail)
+            AtvvRemote.Event.READY -> getString(R.string.remote_event_ready, detail)
+            AtvvRemote.Event.MIC_BUTTON -> getString(R.string.remote_event_mic_button)
+            AtvvRemote.Event.MIC_OPEN -> getString(R.string.remote_event_mic_open)
+            AtvvRemote.Event.AUDIO_START -> getString(R.string.remote_event_audio_start)
+            AtvvRemote.Event.AUDIO_STOP -> getString(R.string.remote_event_audio_stop)
+            AtvvRemote.Event.MIC_ERROR -> getString(R.string.remote_event_mic_error, detail)
+        }
     }
 
     private fun chooseRemote() {
@@ -657,7 +790,20 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     }
 
     override fun onMicRequested() {
-        runOnUiThread { showVoice(VoicePanel(getString(R.string.voice_opening))) }
+        runOnUiThread {
+            main.removeCallbacks(voiceKeyFallback)
+            showVoice(VoicePanel(getString(R.string.voice_opening)))
+            main.removeCallbacks(micTimeout)
+            main.postDelayed(micTimeout, MIC_OPEN_TIMEOUT_MS)
+        }
+    }
+
+    override fun onMicError(code: Int) {
+        runOnUiThread {
+            main.removeCallbacks(micTimeout)
+            showVoice(VoicePanel(getString(R.string.voice_mic_error)))
+            main.postDelayed(hideVoiceRunnable, 4000)
+        }
     }
 
     override fun onVoiceStart() {
@@ -666,6 +812,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             transcriptHandled = false
             val status = if (modelState == SpeechEngine.ModelState.READY) R.string.voice_listening else R.string.voice_model_loading
             showVoice(VoicePanel(getString(status), listening = true))
+            main.removeCallbacks(micTimeout)
             main.removeCallbacks(voiceTimeout)
             main.postDelayed(voiceTimeout, MAX_LISTEN_MS)
         }
@@ -709,14 +856,165 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         }
     }
 
+    // --- Remote buttons ---
+
+    /** A button pressed in the web player arrives here; it runs once the home screen resumes. */
+    private fun takeButtonAction(intent: Intent?) {
+        if (intent == null) return
+        val value = intent.getStringExtra(EXTRA_BUTTON_ACTION) ?: return
+        intent.removeExtra(EXTRA_BUTTON_ACTION)
+        pendingButton = ButtonAction.parse(value)
+    }
+
+    private fun runButtonAction(action: ButtonAction) {
+        when (action) {
+            ButtonAction.Voice -> startVoice()
+            ButtonAction.Home -> home.showTab(HomeTab.HOME)
+            ButtonAction.AllApps -> home.showTab(HomeTab.APPS)
+            ButtonAction.Fullscreen -> toggleFullscreen()
+            ButtonAction.Ignore -> Unit
+            is ButtonAction.OpenApp -> launchApp(action.pkg)
+            is ButtonAction.OpenWeb -> {
+                val shortcut = store.webShortcuts().firstOrNull { it.id == action.id }
+                if (shortcut != null) openWeb(shortcut) else toast(getString(R.string.button_web_missing))
+            }
+        }
+    }
+
+    private fun updateButtonsLabel() {
+        home.buttonsLabel = if (buttons.isEmpty()) getString(R.string.buttons_none) else getString(R.string.buttons_count, buttons.size)
+    }
+
+    override fun buttonsClicked() {
+        val assigned = buttons.entries.sortedBy { buttonName(it.key) }
+        val labels = listOf(getString(R.string.button_add)) +
+            assigned.map { getString(R.string.button_binding, buttonName(it.key), actionLabel(it.value)) }
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.buttons_title)
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which == 0) learnButton() else chooseAction(assigned[which - 1].key)
+            }
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    /**
+     * Waits for a button press. Buttons ChromeOS keeps for itself never arrive, so nothing
+     * happens for them; the message says so.
+     */
+    private fun learnButton() {
+        val dialog = AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.button_learn_title)
+            .setMessage(R.string.button_learn_message)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        dialog.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) return@setOnKeyListener false
+            if (!RemoteButtons.canAssign(keyCode, event.isPrintingKey)) {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    dialog.setMessage(getString(R.string.button_learn_reserved, buttonName(keyCode)) + "\n\n" + getString(R.string.button_learn_message))
+                }
+                // The arrows and OK still reach the Cancel button
+                return@setOnKeyListener false
+            }
+            // Act on release, so the release doesn't land in the next dialog
+            if (event.action == KeyEvent.ACTION_UP) {
+                dialog.dismiss()
+                chooseAction(keyCode)
+            }
+            true
+        }
+        dialog.show()
+    }
+
+    private fun chooseAction(keyCode: Int) {
+        val choices = mutableListOf<Pair<String, () -> Unit>>(
+            getString(R.string.action_voice) to { assign(keyCode, ButtonAction.Voice) },
+            getString(R.string.action_home) to { assign(keyCode, ButtonAction.Home) },
+            getString(R.string.action_apps) to { assign(keyCode, ButtonAction.AllApps) },
+            getString(R.string.action_open_app) to { pickApp(keyCode) },
+            getString(R.string.action_open_web) to { pickWeb(keyCode) },
+            getString(R.string.action_fullscreen) to { assign(keyCode, ButtonAction.Fullscreen) },
+            getString(R.string.action_ignore) to { assign(keyCode, ButtonAction.Ignore) }
+        )
+        if (keyCode in buttons) choices += getString(R.string.button_clear) to { assign(keyCode, null) }
+        showMenu(getString(R.string.button_choose_action, buttonName(keyCode)), choices)
+    }
+
+    private fun pickApp(keyCode: Int) {
+        if (apps.isEmpty()) return toast(getString(R.string.app_missing))
+        showMenu(getString(R.string.action_open_app), apps.map { app -> app.label to { assign(keyCode, ButtonAction.OpenApp(app.pkg)) } })
+    }
+
+    private fun pickWeb(keyCode: Int) {
+        val web = store.webShortcuts()
+        if (web.isEmpty()) return toast(getString(R.string.button_no_web))
+        showMenu(getString(R.string.action_open_web), web.map { shortcut -> shortcut.title to { assign(keyCode, ButtonAction.OpenWeb(shortcut.id)) } })
+    }
+
+    /** Saves the button; a null [action] clears it. */
+    private fun assign(keyCode: Int, action: ButtonAction?) {
+        store.setButtonAction(keyCode, action)
+        buttons = store.buttonActions()
+        updateButtonsLabel()
+        toast(
+            if (action == null) getString(R.string.button_cleared, buttonName(keyCode))
+            else getString(R.string.button_saved, buttonName(keyCode), actionLabel(action))
+        )
+    }
+
+    private fun actionLabel(action: ButtonAction): String = when (action) {
+        ButtonAction.Voice -> getString(R.string.action_voice)
+        ButtonAction.Home -> getString(R.string.action_home)
+        ButtonAction.AllApps -> getString(R.string.action_apps)
+        ButtonAction.Fullscreen -> getString(R.string.action_fullscreen)
+        ButtonAction.Ignore -> getString(R.string.action_ignore)
+        is ButtonAction.OpenApp ->
+            getString(R.string.action_open_target, apps.firstOrNull { it.pkg == action.pkg }?.label ?: action.pkg)
+        is ButtonAction.OpenWeb ->
+            getString(R.string.action_open_target, store.webShortcuts().firstOrNull { it.id == action.id }?.title ?: getString(R.string.action_web_deleted))
+    }
+
+    /** "Menu", "Phát/Tạm dừng", or Android's own name such as "F5" for other keys. */
+    private fun buttonName(keyCode: Int): String {
+        RemoteButtons.NAMES[keyCode]?.let { return getString(it) }
+        val name = KeyEvent.keyCodeToString(keyCode)
+        if (!name.startsWith("KEYCODE_")) return getString(R.string.key_code, keyCode)
+        return name.removePrefix("KEYCODE_").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+    }
+
     // --- Voice panel ---
 
     private fun onVoiceKey() {
-        // The mic button also starts a session over Bluetooth; this only helps when that link is down
-        if (remoteState != AtvvRemote.State.READY) {
+        // The mic button normally starts a session over Bluetooth by itself. When only the key
+        // arrives, the launcher opens the microphone
+        if (remoteState == AtvvRemote.State.READY || remoteState == AtvvRemote.State.CONNECTING) {
+            main.removeCallbacks(voiceKeyFallback)
+            main.postDelayed(voiceKeyFallback, VOICE_KEY_GRACE_MS)
+        } else {
             showVoice(VoicePanel(getString(R.string.voice_remote_offline)))
             main.postDelayed(hideVoiceRunnable, 3500)
         }
+    }
+
+    /** Opens the remote's microphone from the launcher, for an assigned button or a test. */
+    private fun startVoice() {
+        if (remoteState == AtvvRemote.State.READY || remoteState == AtvvRemote.State.CONNECTING) {
+            showVoice(VoicePanel(getString(R.string.voice_opening)))
+            main.removeCallbacks(micTimeout)
+            main.postDelayed(micTimeout, MIC_OPEN_TIMEOUT_MS)
+            remote.openMicrophone()
+        } else {
+            showVoice(VoicePanel(getString(R.string.voice_remote_offline)))
+            main.postDelayed(hideVoiceRunnable, 3500)
+        }
+    }
+
+    /** The microphone was asked to open but no audio came. */
+    private fun onMicSilent() {
+        remote.closeMicrophone()
+        showVoice(VoicePanel(getString(R.string.voice_no_audio)))
+        main.postDelayed(hideVoiceRunnable, 5000)
     }
 
     private fun showVoice(panel: VoicePanel) {
@@ -730,6 +1028,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         pendingVoice?.let { main.removeCallbacks(it) }
         pendingVoice = null
         main.removeCallbacks(voiceTimeout)
+        main.removeCallbacks(micTimeout)
+        main.removeCallbacks(voiceKeyFallback)
         main.removeCallbacks(hideVoiceRunnable)
         transcriptHandled = true
         home.voice = null
@@ -781,8 +1081,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     }
 
     private fun search(shortcut: WebShortcut?, query: String) {
-        // %20 rather than "+", which YouTube's TV interface would show literally
-        val encoded = URLEncoder.encode(query, "UTF-8").replace("+", "%20")
+        val encoded = encode(query)
         if (shortcut == null) {
             openUrl("https://www.google.com/search?q=$encoded", OPENER_LAUNCHER)
         } else {
@@ -883,26 +1182,33 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             .show()
     }
 
-    private fun installUpdate(update: AppUpdate) {
-        if (!updates.canInstall()) {
-            AlertDialog.Builder(this, DIALOG_THEME)
-                .setTitle(R.string.update_title)
-                .setMessage(R.string.update_permission)
-                .setPositiveButton(R.string.update_permission_open) { _, _ -> start(updates.installPermissionIntent()) }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
-            return
-        }
+    private fun askInstallPermission() {
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.update_title)
+            .setMessage(R.string.update_permission)
+            .setPositiveButton(R.string.update_permission_open) { _, _ -> start(updates.installPermissionIntent()) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** A dialog showing one line of progress text, which the caller updates. */
+    private fun progressDialog(title: Int): Pair<AlertDialog, TextView> {
         val status = TextView(this).apply {
             setTextColor(getColor(R.color.text))
             textSize = 16f
             setPadding(dp(24), dp(16), dp(24), dp(8))
         }
         val dialog = AlertDialog.Builder(this, DIALOG_THEME)
-            .setTitle(R.string.update_title)
+            .setTitle(title)
             .setView(status)
             .setCancelable(false)
             .show()
+        return dialog to status
+    }
+
+    private fun installUpdate(update: AppUpdate) {
+        if (!updates.canInstall()) return askInstallPermission()
+        val (dialog, status) = progressDialog(R.string.update_title)
         io.execute {
             val failure = try {
                 val apk = updates.download(update) { percent ->
@@ -926,12 +1232,22 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
+    /** %20 rather than "+", which YouTube's TV interface would show literally. */
+    private fun encode(query: String) = URLEncoder.encode(query, "UTF-8").replace("+", "%20")
+
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     companion object {
+        /** A [ButtonAction] value; the web player sends its assigned buttons here to run. */
+        const val EXTRA_BUTTON_ACTION = "button_action"
+
         private const val BROWSER4K = "local.chromebox.browser4k"
         private const val YOUTUBE_TV_APP = "com.google.android.youtube.tv"
         private const val MAX_LISTEN_MS = 15_000L
+        /** Long enough for the Bluetooth link to come back after the web player closes. */
+        private const val MIC_OPEN_TIMEOUT_MS = 10_000L
+        /** How long a mic key waits for the remote's own Bluetooth request before acting. */
+        private const val VOICE_KEY_GRACE_MS = 700L
         private const val UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000L
         private val DIALOG_THEME = android.R.style.Theme_Material_Dialog_Alert
 

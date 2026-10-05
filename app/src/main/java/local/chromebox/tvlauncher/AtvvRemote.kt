@@ -22,7 +22,9 @@ import java.util.UUID
  * (Xiaomi Bluetooth Remote 2 reports model RC001, 2 Pro reports RC003).
  *
  * Flow: enable notifications, ask for capabilities, then on every mic-button press the remote
- * notifies us, we open the microphone, and it streams IMA ADPCM audio until it stops.
+ * notifies us, we open the microphone, and it streams IMA ADPCM audio until it stops. The
+ * launcher can also open the microphone itself ([openMicrophone]), as Android TV's on-screen
+ * mic does, for when ChromeOS keeps the mic button for itself.
  *
  * All Bluetooth work runs on one background thread. Every [Listener] callback is invoked on
  * that thread, in order, so start / audio / stop never race each other.
@@ -42,9 +44,16 @@ class AtvvRemote(
         /** 16 kHz mono PCM. */
         fun onVoiceAudio(pcm: ShortArray)
         fun onVoiceStop()
+        /** The remote refused to open its microphone. */
+        fun onMicError(code: Int)
     }
 
     enum class State { CONNECTING, READY, NOT_FOUND, NO_BLUETOOTH, NO_PERMISSION, NO_VOICE_SERVICE }
+
+    /** Steps of the Bluetooth link, kept for the remote dialog so problems can be traced. */
+    enum class Event { NOT_FOUND, FOUND, CONNECTED, DISCONNECTED, NO_VOICE_SERVICE, READY, MIC_BUTTON, MIC_OPEN, AUDIO_START, AUDIO_STOP, MIC_ERROR }
+
+    class LogEntry(val time: Long, val event: Event, val detail: String)
 
     private val thread = HandlerThread("atvv-remote").apply { start() }
     private val worker = Handler(thread.looper)
@@ -69,12 +78,15 @@ class AtvvRemote(
     private var session: Byte = 0
 
     // Stream state
+    private var ready = false
+    private var micWanted = false
     private var micRequested = false
     private var streaming = false
     private val frame = ByteArray(MAX_FRAME_SIZE)
     private var frameFill = 0
     private var pendingSync: IntArray? = null
     private val decoder = ImaAdpcmDecoder()
+    private val log = ArrayDeque<LogEntry>()
 
     fun start() = worker.post {
         if (running) return@post
@@ -85,6 +97,7 @@ class AtvvRemote(
 
     fun stop() = worker.post {
         running = false
+        micWanted = false
         worker.removeCallbacksAndMessages(null)
         teardown()
     }
@@ -94,10 +107,34 @@ class AtvvRemote(
         start()
     }
 
+    /**
+     * Opens the microphone without the remote's mic button. While the link is still being set
+     * up, the microphone opens as soon as it is ready.
+     */
+    fun openMicrophone() = worker.post {
+        if (micRequested || streaming) return@post
+        if (ready) sendMicOpen() else micWanted = true
+    }
+
     /** Ends the current voice session, for example once speech has been recognized. */
     fun closeMicrophone() = worker.post {
+        micWanted = false
         if (micRequested || streaming) enqueue { writeTx(micCloseCommand()) }
         endStream()
+    }
+
+    /** The latest link events, oldest first. */
+    fun recentEvents(): List<LogEntry> = synchronized(log) { log.toList() }
+
+    private fun record(event: Event, detail: String = "") {
+        Log.i(TAG, "$event $detail")
+        synchronized(log) {
+            val last = log.lastOrNull()
+            // Retries repeat the same step; keep one line for them
+            if (last != null && last.event == event && last.detail == detail) log.removeLast()
+            log.addLast(LogEntry(System.currentTimeMillis(), event, detail))
+            while (log.size > MAX_LOG) log.removeFirst()
+        }
     }
 
     fun release() {
@@ -139,8 +176,14 @@ class AtvvRemote(
             adapter == null || !adapter.isEnabled -> { report(State.NO_BLUETOOTH); scheduleRetry(); return }
             !hasPermission() -> { report(State.NO_PERMISSION); return }
         }
-        val device = findRemote() ?: run { report(State.NOT_FOUND); scheduleRetry(); return }
+        val device = findRemote() ?: run {
+            record(Event.NOT_FOUND, candidates().joinToString { it.name ?: it.address })
+            report(State.NOT_FOUND)
+            scheduleRetry()
+            return
+        }
         deviceName = device.name ?: device.address
+        record(Event.FOUND, "$deviceName · ${device.address}")
         report(State.CONNECTING)
         discoveryStarted = false
         gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
@@ -155,6 +198,7 @@ class AtvvRemote(
     }
 
     private fun teardown() {
+        ready = false
         endStream()
         operations.clear()
         operationBusy = false
@@ -184,6 +228,8 @@ class AtvvRemote(
         val control = service?.getCharacteristic(CONTROL)
         val audio = service?.getCharacteristic(AUDIO)
         if (transmit == null || control == null || audio == null) {
+            // The short ids of the services the remote does offer, e.g. 1812 for HID
+            record(Event.NO_VOICE_SERVICE, g.services.joinToString { it.uuid.toString().substring(4, 8) })
             report(State.NO_VOICE_SERVICE)
             return
         }
@@ -254,19 +300,31 @@ class AtvvRemote(
             OP_CAPABILITIES -> {
                 parseCapabilities(bytes)
                 retryCount = 0
+                ready = true
+                record(Event.READY, "%d.%d".format(version shr 8, version and 0xFF))
                 report(State.READY)
+                if (micWanted) sendMicOpen()
             }
             OP_MIC_BUTTON -> {
-                micRequested = true
-                listener.onMicRequested()
-                enqueue { writeTx(micOpenCommand()) }
+                record(Event.MIC_BUTTON)
+                sendMicOpen()
             }
             OP_AUDIO_START -> {
                 if (bytes.size >= 3) codec = bytes[2].toInt() and 0xFF
                 session = if (bytes.size >= 4) bytes[3] else 0.toByte()
+                record(Event.AUDIO_START)
                 beginStream()
             }
-            OP_AUDIO_STOP -> endStream()
+            OP_AUDIO_STOP -> {
+                record(Event.AUDIO_STOP)
+                endStream()
+            }
+            OP_MIC_ERROR -> {
+                val code = if (bytes.size >= 3) ((bytes[1].toInt() and 0xFF) shl 8) or (bytes[2].toInt() and 0xFF) else 0
+                record(Event.MIC_ERROR, "0x%04x".format(code))
+                endStream()
+                listener.onMicError(code)
+            }
             OP_AUDIO_SYNC -> if (bytes.size >= 7) {
                 val predictor = (((bytes[4].toInt() and 0xFF) shl 8) or (bytes[5].toInt() and 0xFF)).toShort().toInt()
                 pendingSync = intArrayOf(predictor, bytes[6].toInt() and 0xFF)
@@ -274,6 +332,14 @@ class AtvvRemote(
                 frameFill = 0
             }
         }
+    }
+
+    private fun sendMicOpen() {
+        micWanted = false
+        micRequested = true
+        record(Event.MIC_OPEN)
+        listener.onMicRequested()
+        enqueue { writeTx(micOpenCommand()) }
     }
 
     private fun parseCapabilities(bytes: ByteArray) {
@@ -357,10 +423,12 @@ class AtvvRemote(
                     return@post
                 }
                 if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
+                    record(Event.CONNECTED)
                     // A larger MTU carries whole audio frames per notification
                     if (!g.requestMtu(REQUESTED_MTU)) discoverServices(g)
                     else worker.postDelayed({ discoverServices(g) }, MTU_FALLBACK_MS)
                 } else {
+                    record(Event.DISCONNECTED, "status $status")
                     teardown()
                     report(State.CONNECTING)
                     scheduleRetry()
@@ -440,6 +508,8 @@ class AtvvRemote(
         private const val OP_MIC_BUTTON = 0x08
         private const val OP_AUDIO_SYNC = 0x0A
         private const val OP_CAPABILITIES = 0x0B
+        private const val OP_MIC_ERROR = 0x0C
+        private const val MAX_LOG = 14
 
         private const val CODEC_ADPCM_8K = 0x01
         private const val CODEC_ADPCM_16K = 0x02

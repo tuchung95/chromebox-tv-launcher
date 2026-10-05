@@ -43,6 +43,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -116,6 +117,7 @@ import androidx.tv.material3.darkColorScheme
 import androidx.tv.material3.rememberCarouselState
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_BROWSER4K
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_CHROME
+import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_SMARTTUBE
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_YOUTUBE_TV
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -150,6 +152,9 @@ enum class HomeTab(val label: Int) {
     SEARCH(R.string.tab_search)
 }
 
+/** Asks the home screen to show [tab] with focus in its content; [serial] makes each request new. */
+data class TabRequest(val tab: HomeTab, val serial: Int)
+
 /** Everything the home screen shows. The activity changes it and Compose redraws. */
 class HomeState {
     var tab by mutableStateOf(HomeTab.HOME)
@@ -164,9 +169,18 @@ class HomeState {
     var wallpaper by mutableStateOf(LauncherStore.WALLPAPER_AURORA)
     var wallpaperPhoto by mutableStateOf<ImageBitmap?>(null)
     var voice by mutableStateOf<VoicePanel?>(null)
+    var buttonsLabel by mutableStateOf("")
+    /** Package of the installed SmartTube build, or null. */
+    var smartTube by mutableStateOf<String?>(null)
 
     /** Raised on Back: focus returns to the top navigation, then to the Home tab. */
     var backRequest by mutableIntStateOf(0)
+    var tabRequest by mutableStateOf(TabRequest(HomeTab.HOME, 0))
+
+    /** Shows [tab], as a remote button assigned to it does. */
+    fun showTab(tab: HomeTab) {
+        tabRequest = TabRequest(tab, tabRequest.serial + 1)
+    }
 }
 
 interface HomeActions {
@@ -176,6 +190,9 @@ interface HomeActions {
     fun launchApp(pkg: String)
     fun appMenu(pkg: String, inFavorites: Boolean)
     fun remoteClicked()
+    fun buttonsClicked()
+    fun smartTubeClicked()
+    fun openSmartTube(section: SmartTube.Section)
     fun updateClicked()
     fun toggleFullscreen()
     fun wallpaperClicked()
@@ -202,6 +219,7 @@ private object Palette {
     val Accent = Color(0xFF4FB3FF)
     val OnAccent = Color(0xFF03121F)
     val App = Color(0xFF2B4C7E)
+    val SmartTube = Color(0xFF8E1F1A)
     val Web = listOf(
         Color(0xFF9C2B23), Color(0xFF1E5AA8), Color(0xFF2E7D5B),
         Color(0xFF6E3C96), Color(0xFF99601F), Color(0xFF1F6F80)
@@ -261,6 +279,16 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
             state.tab = HomeTab.HOME
             runCatching { tabRequesters.getValue(HomeTab.HOME).requestFocus() }
         }
+    }
+
+    // An assigned remote button: open the tab and put focus on its first item
+    LaunchedEffect(state.tabRequest) {
+        val request = state.tabRequest
+        if (request.serial == 0) return@LaunchedEffect
+        state.tab = request.tab
+        if (request.tab == HomeTab.HOME) homeList.scrollToItem(0)
+        withFrameNanos { }
+        runCatching { contentStart.requestFocus() }
     }
 
     Wallpaper(state.wallpaper, state.wallpaperPhoto)
@@ -408,6 +436,15 @@ private fun HomeTabContent(state: HomeState, actions: HomeActions, listState: an
                 }
             }
         }
+        state.smartTube?.let {
+            item(key = "smarttube") {
+                CardRow(stringResource(R.string.row_smarttube)) {
+                    items(SmartTube.Section.entries, key = { "smarttube:" + it.name }) { section ->
+                        SmartTubeCard(section, actions, Modifier.width(AppCardWidth))
+                    }
+                }
+            }
+        }
         if (state.favorites.isNotEmpty()) {
             item(key = "favorites") {
                 CardRow(stringResource(R.string.row_favorites)) {
@@ -487,6 +524,7 @@ private fun HeroSlide(item: Featured, carouselFocused: Boolean) {
             val host = MainActivity.hostOf(item.shortcut.url)
             when (item.shortcut.opener) {
                 OPENER_YOUTUBE_TV -> stringResource(R.string.hero_youtube_tv)
+                OPENER_SMARTTUBE -> stringResource(R.string.hero_smarttube)
                 OPENER_BROWSER4K -> stringResource(R.string.hero_browser, stringResource(R.string.name_browser4k), host)
                 OPENER_CHROME -> stringResource(R.string.hero_browser, stringResource(R.string.name_chrome), host)
                 else -> stringResource(R.string.hero_launcher, host)
@@ -596,7 +634,7 @@ private fun HeroArt(item: Featured) {
                     .background(Color.White.copy(alpha = 0.14f), RoundedCornerShape(36.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (item.shortcut.opener == OPENER_YOUTUBE_TV) {
+                if (item.shortcut.opener == OPENER_YOUTUBE_TV || item.shortcut.opener == OPENER_SMARTTUBE) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(110.dp))
                 } else {
                     Text(
@@ -676,7 +714,8 @@ private fun SearchTabContent(state: HomeState, actions: HomeActions, contentStar
     val matchingApps = if (normalized.isEmpty()) emptyList() else state.apps.filter { VoiceCommands.normalize(it.label).contains(normalized) }
     val matchingWeb = if (normalized.isEmpty()) emptyList() else state.web.filter { VoiceCommands.normalize(it.title).contains(normalized) }
     val searchable = state.web.filter { it.search.isNotEmpty() }
-    val defaultSearch = searchable.firstOrNull { it.opener == OPENER_YOUTUBE_TV } ?: searchable.firstOrNull()
+    val defaultSearch = searchable.firstOrNull { it.opener == OPENER_YOUTUBE_TV || it.opener == OPENER_SMARTTUBE }
+        ?: searchable.firstOrNull()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = SafeVertical)) {
         item(key = "field") {
@@ -758,6 +797,22 @@ private fun SettingsTabContent(state: HomeState, actions: HomeActions, contentSt
                 icon = { Icon(painterResource(R.drawable.ic_mic), contentDescription = null, modifier = Modifier.size(24.dp)) }
             )
         }
+        item(key = "buttons") {
+            SettingItem(
+                title = stringResource(R.string.buttons_title),
+                detail = state.buttonsLabel,
+                onClick = actions::buttonsClicked,
+                icon = { Icon(Icons.Filled.Build, contentDescription = null, modifier = Modifier.size(24.dp)) }
+            )
+        }
+        item(key = "smarttube") {
+            SettingItem(
+                title = stringResource(R.string.smarttube_title),
+                detail = stringResource(if (state.smartTube != null) R.string.smarttube_installed else R.string.smarttube_not_installed_detail),
+                onClick = actions::smartTubeClicked,
+                icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp)) }
+            )
+        }
         item(key = "update") {
             SettingItem(
                 title = stringResource(R.string.update_title),
@@ -834,6 +889,7 @@ private fun WebCard(shortcut: WebShortcut, actions: HomeActions, modifier: Modif
     val opener = when (shortcut.opener) {
         OPENER_BROWSER4K -> stringResource(R.string.name_browser4k)
         OPENER_CHROME -> stringResource(R.string.name_chrome)
+        OPENER_SMARTTUBE -> stringResource(R.string.name_smarttube)
         else -> null // opens inside the launcher, the default
     }
     CompactCard(
@@ -901,6 +957,40 @@ private fun AddCard(actions: HomeActions, modifier: Modifier) {
         ) {
             Icon(Icons.Filled.Add, contentDescription = null, tint = Palette.Accent, modifier = Modifier.size(40.dp))
             Text(stringResource(R.string.add_web), style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+        }
+    }
+}
+
+/** Opens one SmartTube section, such as Subscriptions, directly. */
+@Composable
+private fun SmartTubeCard(section: SmartTube.Section, actions: HomeActions, modifier: Modifier) {
+    val open = { actions.openSmartTube(section) }
+    Card(
+        onClick = open,
+        modifier = modifier
+            .aspectRatio(16f / 9f)
+            .focusOnHover()
+            .pointerClick(open),
+        shape = CardDefaults.shape(cardShape),
+        colors = CardDefaults.colors(containerColor = Palette.SmartTube, focusedContainerColor = lerp(Palette.SmartTube, Color.White, 0.12f)),
+        scale = CardDefaults.scale(focusedScale = 1.1f),
+        border = CardDefaults.border(focusedBorder = focusedBorder),
+        glow = CardDefaults.glow(focusedGlow = focusedGlow)
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp))
+            Text(
+                stringResource(section.label),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }
