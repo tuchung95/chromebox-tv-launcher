@@ -23,6 +23,7 @@ android {
         targetSdk = 36
         versionCode = versionProps['VERSION_CODE'] as Integer
         versionName = versionProps['VERSION_NAME']
+        testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
         ndk {
             // Intel Chromebox first; arm64 kept for Android TV boxes
             abiFilters 'x86_64', 'x86', 'arm64-v8a'
@@ -89,4 +90,6 @@ dependencies {
     implementation 'net.java.dev.jna:jna:5.18.1@aar'
 
     testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }
