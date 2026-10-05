@@ -98,6 +98,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         remote = AtvvRemote(this, { store.remoteAddress }, this)
 
         home.fullscreen = store.fullscreen
+        home.wallpaper = store.wallpaper
+        if (store.wallpaper == LauncherStore.WALLPAPER_PHOTO) loadWallpaperPhoto()
         updateVersionLabel()
         setContent { ChromeboxTvTheme { HomeScreen(home, this) } }
 
@@ -176,6 +178,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     /** Reloads apps, pages and favorites; skips the work when nothing changed. */
     private fun refreshHome(force: Boolean = false) {
         val loaded = loadApps()
+        store.pinNewlyInstalled(loaded.map { it.pkg }.toSet())
         val signature = loaded.joinToString(",") { it.pkg + "/" + it.label } + "#" + store.signature()
         if (!force && signature == lastSignature) return
         lastSignature = signature
@@ -233,6 +236,75 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     }
 
     override fun searchFor(query: String, shortcut: WebShortcut?) = search(shortcut, query)
+
+    override fun wallpaperClicked() {
+        val styles = listOf(
+            LauncherStore.WALLPAPER_NONE, LauncherStore.WALLPAPER_AURORA,
+            LauncherStore.WALLPAPER_SUNSET, LauncherStore.WALLPAPER_OCEAN, LauncherStore.WALLPAPER_PHOTO
+        )
+        val labels = styles.map { style ->
+            getString(if (style == LauncherStore.WALLPAPER_PHOTO) R.string.wallpaper_pick else wallpaperName(style))
+        }
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.settings_wallpaper)
+            .setSingleChoiceItems(labels.toTypedArray(), styles.indexOf(store.wallpaper)) { dialog, which ->
+                dialog.dismiss()
+                val style = styles[which]
+                if (style == LauncherStore.WALLPAPER_PHOTO) {
+                    // The ChromeOS file picker, which also reaches Downloads and Google Drive.
+                    // Some TV boxes have no file picker at all.
+                    try {
+                        pickWallpaper.launch(arrayOf("image/*"))
+                    } catch (e: ActivityNotFoundException) {
+                        toast(getString(R.string.wallpaper_no_picker))
+                    }
+                } else {
+                    store.wallpaper = style
+                    home.wallpaper = style
+                }
+            }
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private val pickWallpaper =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let { importWallpaper(it) } }
+
+    private fun wallpaperFile() = java.io.File(filesDir, "wallpaper.jpg")
+
+    /** Copies the chosen image, scaled down to the screen, into app storage. */
+    private fun importWallpaper(uri: Uri) {
+        val target = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels).coerceAtLeast(1280)
+        io.execute {
+            val bitmap = runCatching {
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= target) sample *= 2
+                val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                val decoded = contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, options) }
+                    ?: error("unreadable image")
+                wallpaperFile().outputStream().use { decoded.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                decoded
+            }.getOrNull()
+            runOnUiThread {
+                if (bitmap == null) {
+                    toast(getString(R.string.wallpaper_failed))
+                } else {
+                    store.wallpaper = LauncherStore.WALLPAPER_PHOTO
+                    home.wallpaper = LauncherStore.WALLPAPER_PHOTO
+                    home.wallpaperPhoto = bitmap.asImageBitmap()
+                }
+            }
+        }
+    }
+
+    private fun loadWallpaperPhoto() {
+        io.execute {
+            val bitmap = runCatching { android.graphics.BitmapFactory.decodeFile(wallpaperFile().path) }.getOrNull()
+            runOnUiThread { home.wallpaperPhoto = bitmap?.asImageBitmap() }
+        }
+    }
 
     override fun dismissVoice() {
         remote.closeMicrophone()

@@ -48,9 +48,11 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +65,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -157,6 +161,8 @@ class HomeState {
     var updateAvailable by mutableStateOf(false)
     var updateLabel by mutableStateOf("")
     var fullscreen by mutableStateOf(true)
+    var wallpaper by mutableStateOf(LauncherStore.WALLPAPER_AURORA)
+    var wallpaperPhoto by mutableStateOf<ImageBitmap?>(null)
     var voice by mutableStateOf<VoicePanel?>(null)
 
     /** Raised on Back: focus returns to the top navigation, then to the Home tab. */
@@ -172,6 +178,7 @@ interface HomeActions {
     fun remoteClicked()
     fun updateClicked()
     fun toggleFullscreen()
+    fun wallpaperClicked()
     fun dismissVoice()
     /** [shortcut] null searches Google. */
     fun searchFor(query: String, shortcut: WebShortcut?)
@@ -256,11 +263,8 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
         }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Palette.Background)
-    ) {
+    Wallpaper(state.wallpaper, state.wallpaperPhoto)
+    Column(Modifier.fillMaxSize()) {
         TopBar(state, tabRequesters, onNavFocus = { navHasFocus = it })
         Box(Modifier.fillMaxSize()) {
             when (state.tab) {
@@ -386,7 +390,11 @@ private fun HomeTabContent(state: HomeState, actions: HomeActions, listState: an
         contentPadding = PaddingValues(bottom = SafeVertical)
     ) {
         if (featured.isNotEmpty()) {
-            item(key = "hero") { Hero(featured, actions, contentStart) }
+            item(key = "hero") {
+                // A new carousel state whenever the featured items change, so the active index
+                // never points past the end of a shorter list
+                key(featured.map { it.key }) { Hero(featured, actions, contentStart) }
+            }
         }
         item(key = "web") {
             CardRow(stringResource(R.string.row_watch)) {
@@ -458,7 +466,7 @@ private fun Hero(items: List<Featured>, actions: HomeActions, focusRequester: Fo
             )
         }
     ) { index ->
-        HeroSlide(items[index], focused)
+        items.getOrNull(index)?.let { HeroSlide(it, focused) }
     }
 }
 
@@ -767,6 +775,14 @@ private fun SettingsTabContent(state: HomeState, actions: HomeActions, contentSt
                 icon = { Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(24.dp)) }
             )
         }
+        item(key = "wallpaper") {
+            SettingItem(
+                title = stringResource(R.string.settings_wallpaper),
+                detail = stringResource(wallpaperName(state.wallpaper)),
+                onClick = actions::wallpaperClicked,
+                icon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(24.dp)) }
+            )
+        }
         item(key = "add") {
             SettingItem(
                 title = stringResource(R.string.add_web),
@@ -1019,6 +1035,79 @@ private fun MicBadge(listening: Boolean) {
         contentAlignment = Alignment.Center
     ) {
         Image(painterResource(R.drawable.ic_mic), contentDescription = null, modifier = Modifier.size(36.dp))
+    }
+}
+
+// --- Wallpaper ---
+
+fun wallpaperName(style: String): Int = when (style) {
+    LauncherStore.WALLPAPER_NONE -> R.string.wallpaper_none
+    LauncherStore.WALLPAPER_SUNSET -> R.string.wallpaper_sunset
+    LauncherStore.WALLPAPER_OCEAN -> R.string.wallpaper_ocean
+    LauncherStore.WALLPAPER_PHOTO -> R.string.wallpaper_photo
+    else -> R.string.wallpaper_aurora
+}
+
+/** A soft light source: colour, centre and radius as fractions of the screen width and height. */
+private data class Glow2D(val color: Color, val x: Float, val y: Float, val radius: Float)
+
+private val WallpaperStyles = mapOf(
+    LauncherStore.WALLPAPER_AURORA to (Color(0xFF0A0F1C) to listOf(
+        Glow2D(Color(0xFF1FA28A).copy(alpha = 0.50f), 0.15f, 0.0f, 0.60f),
+        Glow2D(Color(0xFF6B3FA0).copy(alpha = 0.42f), 0.85f, 0.2f, 0.50f),
+        Glow2D(Color(0xFF1E4FA8).copy(alpha = 0.35f), 0.5f, 1.05f, 0.70f)
+    )),
+    LauncherStore.WALLPAPER_SUNSET to (Color(0xFF130C18) to listOf(
+        Glow2D(Color(0xFFE0703A).copy(alpha = 0.45f), 0.82f, 0.08f, 0.55f),
+        Glow2D(Color(0xFFB0306A).copy(alpha = 0.40f), 0.18f, 0.3f, 0.50f),
+        Glow2D(Color(0xFF3A2470).copy(alpha = 0.50f), 0.5f, 1.1f, 0.80f)
+    )),
+    LauncherStore.WALLPAPER_OCEAN to (Color(0xFF06121F) to listOf(
+        Glow2D(Color(0xFF1B8FB8).copy(alpha = 0.42f), 0.25f, 0.0f, 0.60f),
+        Glow2D(Color(0xFF123E8A).copy(alpha = 0.50f), 0.9f, 0.6f, 0.60f),
+        Glow2D(Color(0xFF0E6B6B).copy(alpha = 0.35f), 0.4f, 1.1f, 0.70f)
+    ))
+)
+
+/**
+ * The home screen background. Photos get a dark scrim, darker at the top and bottom where
+ * the navigation and rows sit, so text keeps the high contrast TV guidelines ask for.
+ */
+@Composable
+private fun Wallpaper(style: String, photo: ImageBitmap?) {
+    Box(Modifier.fillMaxSize().background(Palette.Background)) {
+        if (style == LauncherStore.WALLPAPER_PHOTO && photo != null) {
+            Image(photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.70f),
+                            0.45f to Color.Black.copy(alpha = 0.45f),
+                            1f to Color.Black.copy(alpha = 0.80f)
+                        )
+                    )
+            )
+        } else {
+            val (base, glows) = WallpaperStyles[style] ?: return@Box
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        drawRect(base)
+                        glows.forEach { glow ->
+                            drawRect(
+                                Brush.radialGradient(
+                                    listOf(glow.color, Color.Transparent),
+                                    center = Offset(size.width * glow.x, size.height * glow.y),
+                                    radius = size.width * glow.radius
+                                )
+                            )
+                        }
+                    }
+            )
+        }
     }
 }
 

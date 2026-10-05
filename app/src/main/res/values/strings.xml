@@ -26,6 +26,15 @@
     <string name="setting_on">Đang bật · bấm để tắt (F11)</string>
     <string name="setting_off">Đang tắt · bấm để bật (F11)</string>
     <string name="settings_add_web_detail">Ghim một trang vào hàng Xem ngay</string>
+    <string name="settings_wallpaper">Hình nền</string>
+    <string name="wallpaper_none">Tối giản</string>
+    <string name="wallpaper_aurora">Cực quang</string>
+    <string name="wallpaper_sunset">Hoàng hôn</string>
+    <string name="wallpaper_ocean">Đại dương</string>
+    <string name="wallpaper_photo">Ảnh của bạn</string>
+    <string name="wallpaper_pick">Chọn ảnh từ máy…</string>
+    <string name="wallpaper_failed">Không mở được ảnh này</string>
+    <string name="wallpaper_no_picker">Thiết bị này không có trình chọn file</string>
     <string name="settings_about">Giới thiệu</string>
     <string name="settings_about_detail">Chromebox TV · github.com/tuchung95/chromebox-tv-launcher</string>
     <string name="update_version_current">Phiên bản %1$s · bấm để kiểm tra bản mới</string>
@@ -46,7 +55,7 @@
     <string name="add_web">Thêm trang web</string>
     <string name="edit_web">Sửa trang web</string>
     <string name="field_title">Tên hiển thị</string>
-    <string name="field_url">Địa chỉ, ví dụ film4k.net</string>
+    <string name="field_url">Địa chỉ, ví dụ vimeo.com</string>
     <string name="field_search" formatted="false">Tìm kiếm (tùy chọn), ví dụ youtube.com/results?search_query=%s</string>
     <string name="opener_launcher">Mở ngay trong launcher</string>
     <string name="opener_youtube_tv">Mở bằng giao diện YouTube TV</string>

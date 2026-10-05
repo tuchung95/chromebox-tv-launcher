@@ -29,6 +29,11 @@ class LauncherStore(context: Context) {
         get() = prefs.getString(KEY_REMOTE, null)
         set(value) = prefs.edit().putString(KEY_REMOTE, value).apply()
 
+    /** Background of the home screen: a built-in style or the viewer's own photo. */
+    var wallpaper: String
+        get() = prefs.getString(KEY_WALLPAPER, null) ?: WALLPAPER_AURORA
+        set(value) = prefs.edit().putString(KEY_WALLPAPER, value).apply()
+
     /** Address of updates.json on the update server. */
     var updateUrl: String
         get() = prefs.getString(KEY_UPDATE_URL, null) ?: DEFAULT_UPDATE_URL
@@ -36,7 +41,9 @@ class LauncherStore(context: Context) {
 
     fun webShortcuts(): MutableList<WebShortcut> {
         migrateYouTubeToTv()
-        val raw = prefs.getString(KEY_WEB, null) ?: return defaultWeb()
+        removeRetiredDefaults()
+        // Save the defaults on first use so their ids stay stable for editing
+        val raw = prefs.getString(KEY_WEB, null) ?: return defaultWeb().also { saveWeb(it) }
         return try {
             val array = JSONArray(raw)
             MutableList(array.length()) { i ->
@@ -73,9 +80,23 @@ class LauncherStore(context: Context) {
         }
     }
 
+    /** Version 1.0.8 dropped a page that earlier versions pinned by default. */
+    private fun removeRetiredDefaults() {
+        if (prefs.getBoolean(KEY_RETIRED_REMOVED, false)) return
+        prefs.edit().putBoolean(KEY_RETIRED_REMOVED, true).apply()
+        if (prefs.getString(KEY_WEB, null) == null) return
+        updateWeb { list ->
+            list.removeAll { android.net.Uri.parse(it.url).host.orEmpty().endsWith(RETIRED_DEFAULT_HOST) }
+        }
+    }
+
     fun updateWeb(block: (MutableList<WebShortcut>) -> Unit) {
         val list = webShortcuts()
         block(list)
+        saveWeb(list)
+    }
+
+    private fun saveWeb(list: List<WebShortcut>) {
         val array = JSONArray()
         list.forEach {
             array.put(
@@ -124,12 +145,33 @@ class LauncherStore(context: Context) {
         prefs.edit().putString(KEY_SEPARATE_WINDOW, JSONArray(set.toList()).toString()).apply()
     }
 
+    /**
+     * Pins apps installed since the last scan to the front of the favorites, as Android TV
+     * does. The first scan only records what is installed, so existing apps stay unpinned.
+     */
+    fun pinNewlyInstalled(installed: Set<String>) {
+        val raw = prefs.getString(KEY_KNOWN_APPS, null)
+        if (raw == null) {
+            prefs.edit().putString(KEY_KNOWN_APPS, JSONArray(installed.toList()).toString()).apply()
+            return
+        }
+        val known = try {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.getString(it) }.toSet()
+        } catch (e: JSONException) {
+            emptySet()
+        }
+        val fresh = installed - known
+        if (fresh.isEmpty()) return
+        updateFavorites { favorites -> fresh.forEach { if (it !in favorites) favorites.add(0, it) } }
+        prefs.edit().putString(KEY_KNOWN_APPS, JSONArray((known + installed).toList()).toString()).apply()
+    }
+
     /** Changes whenever the shortcuts or favorites change; used to skip needless redraws. */
     fun signature(): String =
         prefs.getString(KEY_WEB, "") + "|" + prefs.getString(KEY_FAVORITES, "")
 
     private fun defaultWeb() = mutableListOf(
-        WebShortcut(newId(), "Film4K", "https://film4k.net/", OPENER_LAUNCHER, ""),
         WebShortcut(newId(), "YouTube", YOUTUBE_TV_URL, OPENER_YOUTUBE_TV, YOUTUBE_TV_SEARCH)
     )
 
@@ -152,6 +194,16 @@ class LauncherStore(context: Context) {
         private const val KEY_UPDATE_URL = "update_url"
         private const val KEY_SEPARATE_WINDOW = "separate_window_apps"
         private const val KEY_YOUTUBE_TV_MIGRATED = "youtube_tv_migrated"
+        private const val KEY_KNOWN_APPS = "known_apps"
+        private const val KEY_WALLPAPER = "wallpaper"
+
+        const val WALLPAPER_NONE = "none"
+        const val WALLPAPER_AURORA = "aurora"
+        const val WALLPAPER_SUNSET = "sunset"
+        const val WALLPAPER_OCEAN = "ocean"
+        const val WALLPAPER_PHOTO = "photo"
+        private const val KEY_RETIRED_REMOVED = "retired_defaults_removed"
+        private const val RETIRED_DEFAULT_HOST = "film4k.net"
 
         /** updates.json attached to the latest GitHub release (see scripts/release.sh). */
         const val DEFAULT_UPDATE_URL =

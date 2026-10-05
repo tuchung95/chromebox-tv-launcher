@@ -6,8 +6,8 @@ import org.junit.Test
 class VoiceCommandsTest {
 
     private val youtube = WebShortcut("1", "YouTube", "https://www.youtube.com/", "chrome", "https://www.youtube.com/results?search_query=%s")
-    private val film4k = WebShortcut("2", "Film4K", "https://film4k.net/", "browser4k", "")
-    private val web = listOf(youtube, film4k)
+    private val movies = WebShortcut("2", "Kho Phim", "https://example.com/", "launcher", "")
+    private val web = listOf(youtube, movies)
     private val apps = listOf("VLC" to "org.videolan.vlc.chromebox", "4K Browser" to "local.chromebox.browser4k", "Cài đặt" to "com.android.settings")
 
     private fun parse(text: String) = VoiceCommands.parse(text, apps, web)
@@ -32,7 +32,7 @@ class VoiceCommandsTest {
     fun searchesGoogle() = assertEquals(VoiceAction.Search(null, "thời tiết hà nội"), parse("tìm trên google thời tiết hà nội"))
 
     @Test
-    fun siteWithoutSearchOffersChoices() = assertEquals(VoiceAction.Choose("phim hành động"), parse("film4k phim hành động"))
+    fun siteWithoutSearchOffersChoices() = assertEquals(VoiceAction.Choose("phim hành động"), parse("kho phim phim hành động"))
 
     @Test
     fun plainSearchOffersChoices() {

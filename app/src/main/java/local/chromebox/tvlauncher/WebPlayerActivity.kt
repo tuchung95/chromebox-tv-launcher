@@ -427,7 +427,7 @@ class WebPlayerActivity : Activity() {
         """.trimIndent()
         private const val MATCH = FrameLayout.LayoutParams.MATCH_PARENT
 
-        /** Registrable part of a host, e.g. "film4k.net" for "cdn.film4k.net". */
+        /** Registrable part of a host, e.g. "example.com" for "cdn.example.com". */
         private fun siteOf(url: String?): String? {
             val host = url?.let { Uri.parse(it).host }?.lowercase() ?: return null
             val parts = host.split('.')
