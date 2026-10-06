@@ -102,6 +102,7 @@
     <string name="remote_no_bluetooth">Remote: Bluetooth đang tắt</string>
     <string name="remote_no_permission">Remote: cần quyền Bluetooth</string>
     <string name="remote_no_voice">Remote: không có dịch vụ giọng nói</string>
+    <string name="remote_blocked">Remote: Android chặn micro của remote</string>
     <string name="remote_help">Ghép đôi remote Xiaomi trong Cài đặt › Bluetooth của ChromeOS. Khi Chromebox TV đang mở, bấm nút micro trên remote rồi nói, ví dụ:\n• mở YouTube\n• tìm trên YouTube nhạc Trịnh\n• mở VLC\nNếu nút micro lại mở Trợ lý hoặc trình chạy của ChromeOS, hãy gán một nút khác thành “Nói lệnh” trong Cài đặt › Nút remote.</string>
     <string name="remote_reconnect">Kết nối lại</string>
     <string name="remote_test_mic">Thử micro</string>
@@ -119,6 +120,7 @@
     <string name="remote_event_model">Model: %1$s</string>
     <string name="remote_event_timeout">Thao tác Bluetooth không phản hồi sau 3 giây: %1$s</string>
     <string name="remote_event_op_error">Lỗi thao tác Bluetooth: %1$s</string>
+    <string name="remote_event_voice_blocked">%1$s chỉ cho ứng dụng hệ thống dùng micro của remote Android TV (cần quyền BLUETOOTH_PRIVILEGED). Launcher ngừng kết nối; bấm Kết nối lại để thử lại.</string>
     <string name="remote_event_blocked">Bluetooth bị treo ở: %1$s</string>
     <string name="remote_event_no_caps">Remote không trả lời thông số giọng nói; vẫn thử mở micro</string>
     <string name="remote_event_stalled">Remote không trả lời ở bước %1$s, kết nối lại</string>
@@ -232,6 +234,7 @@
     <string name="voice_choose">Bạn muốn làm gì?</string>
     <string name="voice_remote_offline">Remote chưa kết nối. Xem Cài đặt › Remote giọng nói.</string>
     <string name="voice_no_audio">Remote không gửi âm thanh. Xem nhật ký trong Cài đặt › Remote giọng nói.</string>
+    <string name="voice_blocked">Android trên ChromeOS không cho ứng dụng dùng micro của remote. Các nút bấm của remote vẫn dùng bình thường.</string>
     <string name="voice_mic_error">Remote không mở được micro, hãy thử lại sau giây lát</string>
     <string name="voice_opening_target">Đang mở %1$s</string>
     <string name="voice_searching">Đang tìm “%1$s” trên %2$s</string>

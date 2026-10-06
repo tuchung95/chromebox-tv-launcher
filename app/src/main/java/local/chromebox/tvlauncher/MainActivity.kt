@@ -732,6 +732,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         AtvvRemote.State.NO_BLUETOOTH -> R.string.remote_no_bluetooth
         AtvvRemote.State.NO_PERMISSION -> R.string.remote_no_permission
         AtvvRemote.State.NO_VOICE_SERVICE -> R.string.remote_no_voice
+        AtvvRemote.State.BLOCKED -> R.string.remote_blocked
     }
 
     private fun updateRemoteLabel() {
@@ -807,6 +808,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             AtvvRemote.Event.TIMEOUT -> getString(R.string.remote_event_timeout, detail)
             AtvvRemote.Event.OP_ERROR -> getString(R.string.remote_event_op_error, detail)
             AtvvRemote.Event.BLOCKED -> getString(R.string.remote_event_blocked, detail)
+            AtvvRemote.Event.VOICE_BLOCKED -> getString(R.string.remote_event_voice_blocked, detail)
             AtvvRemote.Event.STALLED ->
                 if (detail == "caps") getString(R.string.remote_event_no_caps) else getString(R.string.remote_event_stalled, detail)
             AtvvRemote.Event.CONTROL -> getString(R.string.remote_event_control, detail)
@@ -1160,7 +1162,9 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     private fun onVoiceKey() {
         // The mic button normally starts a session over Bluetooth by itself. When only the key
         // arrives, the launcher opens the microphone
-        if (remoteState == AtvvRemote.State.READY || remoteState == AtvvRemote.State.CONNECTING) {
+        if (remoteState == AtvvRemote.State.BLOCKED) {
+            startVoice()
+        } else if (remoteState == AtvvRemote.State.READY || remoteState == AtvvRemote.State.CONNECTING) {
             main.removeCallbacks(voiceKeyFallback)
             main.postDelayed(voiceKeyFallback, VOICE_KEY_GRACE_MS)
         } else {
@@ -1171,6 +1175,11 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     /** Opens the remote's microphone from the launcher, for an assigned button or a test. */
     private fun startVoice() {
+        if (remoteState == AtvvRemote.State.BLOCKED) {
+            showVoice(VoicePanel(getString(R.string.voice_blocked)))
+            main.postDelayed(hideVoiceRunnable, 6000)
+            return
+        }
         if (remoteState == AtvvRemote.State.READY || remoteState == AtvvRemote.State.CONNECTING) {
             showVoice(VoicePanel(getString(R.string.voice_opening)))
             main.removeCallbacks(micTimeout)

@@ -50,12 +50,13 @@ class AtvvRemote(
         fun onMicError(code: Int)
     }
 
-    enum class State { CONNECTING, READY, NOT_FOUND, NO_BLUETOOTH, NO_PERMISSION, NO_VOICE_SERVICE }
+    enum class State { CONNECTING, READY, NOT_FOUND, NO_BLUETOOTH, NO_PERMISSION, NO_VOICE_SERVICE, BLOCKED }
 
     /** Steps of the Bluetooth link, kept for the remote dialog so problems can be traced. */
     enum class Event {
         NOT_FOUND, FOUND, CONNECTED, DISCONNECTED, MTU, SERVICES, NO_VOICE_SERVICE, NOTIFY, CAPS_SENT, READY, MODEL,
-        STALLED, TIMEOUT, OP_ERROR, BLOCKED, CONTROL, WRITE_FAILED, MIC_BUTTON, MIC_OPEN, AUDIO_START, AUDIO_STOP, MIC_ERROR
+        STALLED, TIMEOUT, OP_ERROR, BLOCKED, VOICE_BLOCKED, CONTROL, WRITE_FAILED, MIC_BUTTON, MIC_OPEN, AUDIO_START,
+        AUDIO_STOP, MIC_ERROR
     }
 
     class LogEntry(val time: Long, val event: Event, val detail: String)
@@ -134,9 +135,27 @@ class AtvvRemote(
         teardown()
     }
 
+    /** Tries again, also after Android refused the voice service. */
     fun restart() {
+        prefs.edit().remove(KEY_BLOCKED_SDK).apply()
         stop()
         start()
+    }
+
+    // Android 13 lets only system apps use the remote's voice service (BLUETOOTH_PRIVILEGED).
+    // Once refused, the launcher stops connecting on that Android version, so it doesn't keep
+    // a useless link to the remote open
+    private val prefs = context.getSharedPreferences("atvv", Context.MODE_PRIVATE)
+
+    private fun voiceBlocked() = prefs.getInt(KEY_BLOCKED_SDK, 0) == Build.VERSION.SDK_INT
+
+    private fun onVoiceRefused() {
+        record(Event.VOICE_BLOCKED, "Android ${Build.VERSION.RELEASE}")
+        prefs.edit().putInt(KEY_BLOCKED_SDK, Build.VERSION.SDK_INT).apply()
+        operations.clear()
+        teardown()
+        running = false
+        report(State.BLOCKED)
     }
 
     /**
@@ -224,6 +243,10 @@ class AtvvRemote(
 
     private fun connect() {
         if (!running || gatt != null) return
+        if (voiceBlocked()) {
+            report(State.BLOCKED)
+            return
+        }
         val adapter = bluetooth?.adapter
         when {
             adapter == null || !adapter.isEnabled -> { report(State.NO_BLUETOOTH); scheduleRetry(); return }
@@ -398,6 +421,8 @@ class AtvvRemote(
     private fun hex(bytes: ByteArray) = bytes.take(12).joinToString(" ") { "%02x".format(it) }
 
     private fun enqueue(name: String, operation: () -> Boolean) {
+        // Set-up queues several steps at once; none run after the link was given up
+        if (!running || gatt == null) return
         operations.addLast(name to operation)
         if (!operationBusy) nextOperation()
     }
@@ -408,6 +433,13 @@ class AtvvRemote(
             currentOperation = name
             val started = try {
                 operation()
+            } catch (e: SecurityException) {
+                if (e.message.orEmpty().contains("PRIVILEGED")) {
+                    onVoiceRefused()
+                    return
+                }
+                record(Event.OP_ERROR, "$name · ${e.javaClass.simpleName} ${e.message.orEmpty().take(80)}")
+                false
             } catch (e: Throwable) {
                 record(Event.OP_ERROR, "$name · ${e.javaClass.simpleName} ${e.message.orEmpty().take(80)}")
                 false
@@ -685,6 +717,7 @@ class AtvvRemote(
         private const val SETUP_TIMEOUT_MS = 20_000L
         private const val CAPS_TIMEOUT_MS = 4_000L
         private const val BLOCKED_CHECK_MS = 30_000L
+        private const val KEY_BLOCKED_SDK = "voice_blocked_sdk"
 
         private const val OP_AUDIO_STOP = 0x00
         private const val OP_AUDIO_START = 0x04
