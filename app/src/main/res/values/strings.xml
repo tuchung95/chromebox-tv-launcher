@@ -110,8 +110,16 @@
     <string name="remote_event_found">Tìm thấy %1$s</string>
     <string name="remote_event_connected">Đã kết nối Bluetooth</string>
     <string name="remote_event_disconnected">Mất kết nối (%1$s)</string>
+    <string name="remote_event_mtu">MTU %1$s</string>
+    <string name="remote_event_services">Dịch vụ: %1$s</string>
     <string name="remote_event_no_voice">Remote không có dịch vụ giọng nói. Dịch vụ thấy được: %1$s</string>
+    <string name="remote_event_notify">Bật thông báo: %1$s</string>
+    <string name="remote_event_caps_sent">Hỏi thông số giọng nói (%1$s)</string>
     <string name="remote_event_ready">Sẵn sàng, giao thức giọng nói %1$s</string>
+    <string name="remote_event_no_caps">Remote không trả lời thông số giọng nói; vẫn thử mở micro</string>
+    <string name="remote_event_stalled">Remote không trả lời ở bước %1$s, kết nối lại</string>
+    <string name="remote_event_control">Remote gửi: %1$s</string>
+    <string name="remote_event_write_failed">Ghi thất bại: %1$s</string>
     <string name="remote_event_mic_button">Remote báo bấm nút micro</string>
     <string name="remote_event_mic_open">Launcher mở micro</string>
     <string name="remote_event_audio_start">Bắt đầu nhận âm thanh</string>

@@ -728,11 +728,12 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         // What the Bluetooth link went through, so a screenshot shows where it stops
         val clock = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
         val details = buildString {
-            append(status).append("\n\n").append(getString(R.string.remote_help))
+            append(status)
             append("\n\n").append(getString(R.string.remote_details, Build.VERSION.RELEASE, remote.knownDevices().size))
             remote.recentEvents().forEach { entry ->
                 append('\n').append(clock.format(Date(entry.time))).append("  ").append(eventText(entry))
             }
+            append("\n\n").append(getString(R.string.remote_help))
         }
         val ready = remoteState == AtvvRemote.State.READY
         AlertDialog.Builder(this, DIALOG_THEME)
@@ -753,8 +754,16 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             AtvvRemote.Event.FOUND -> getString(R.string.remote_event_found, detail)
             AtvvRemote.Event.CONNECTED -> getString(R.string.remote_event_connected)
             AtvvRemote.Event.DISCONNECTED -> getString(R.string.remote_event_disconnected, detail)
+            AtvvRemote.Event.MTU -> getString(R.string.remote_event_mtu, detail)
+            AtvvRemote.Event.SERVICES -> getString(R.string.remote_event_services, detail)
             AtvvRemote.Event.NO_VOICE_SERVICE -> getString(R.string.remote_event_no_voice, detail)
+            AtvvRemote.Event.NOTIFY -> getString(R.string.remote_event_notify, detail)
+            AtvvRemote.Event.CAPS_SENT -> getString(R.string.remote_event_caps_sent, detail)
             AtvvRemote.Event.READY -> getString(R.string.remote_event_ready, detail)
+            AtvvRemote.Event.STALLED ->
+                if (detail == "caps") getString(R.string.remote_event_no_caps) else getString(R.string.remote_event_stalled, detail)
+            AtvvRemote.Event.CONTROL -> getString(R.string.remote_event_control, detail)
+            AtvvRemote.Event.WRITE_FAILED -> getString(R.string.remote_event_write_failed, detail)
             AtvvRemote.Event.MIC_BUTTON -> getString(R.string.remote_event_mic_button)
             AtvvRemote.Event.MIC_OPEN -> getString(R.string.remote_event_mic_open)
             AtvvRemote.Event.AUDIO_START -> getString(R.string.remote_event_audio_start)

@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -51,7 +52,10 @@ class AtvvRemote(
     enum class State { CONNECTING, READY, NOT_FOUND, NO_BLUETOOTH, NO_PERMISSION, NO_VOICE_SERVICE }
 
     /** Steps of the Bluetooth link, kept for the remote dialog so problems can be traced. */
-    enum class Event { NOT_FOUND, FOUND, CONNECTED, DISCONNECTED, NO_VOICE_SERVICE, READY, MIC_BUTTON, MIC_OPEN, AUDIO_START, AUDIO_STOP, MIC_ERROR }
+    enum class Event {
+        NOT_FOUND, FOUND, CONNECTED, DISCONNECTED, MTU, SERVICES, NO_VOICE_SERVICE, NOTIFY, CAPS_SENT, READY,
+        STALLED, CONTROL, WRITE_FAILED, MIC_BUTTON, MIC_OPEN, AUDIO_START, AUDIO_STOP, MIC_ERROR
+    }
 
     class LogEntry(val time: Long, val event: Event, val detail: String)
 
@@ -65,6 +69,12 @@ class AtvvRemote(
     private var tx: BluetoothGattCharacteristic? = null
     private var discoveryStarted = false
     private var retryCount = 0
+
+    // Set-up after connecting: which step is running, and timers for steps that never finish
+    private var step = ""
+    private var legacyCapsTried = false
+    private val setupWatchdog = Runnable { onSetupStalled() }
+    private val capsTimeout = Runnable { onCapsTimeout() }
 
     // Serialized GATT operations: Android allows only one outstanding request at a time
     private val operations = ArrayDeque<() -> Boolean>()
@@ -199,6 +209,9 @@ class AtvvRemote(
 
     private fun teardown() {
         ready = false
+        step = ""
+        worker.removeCallbacks(setupWatchdog)
+        worker.removeCallbacks(capsTimeout)
         endStream()
         operations.clear()
         operationBusy = false
@@ -216,10 +229,49 @@ class AtvvRemote(
     private fun discoverServices(g: BluetoothGatt) {
         if (discoveryStarted || g != gatt) return
         discoveryStarted = true
+        step = "services"
         if (!g.discoverServices()) {
+            record(Event.SERVICES, "discoverServices = false")
             teardown()
             scheduleRetry()
         }
+    }
+
+    /** A set-up step before the capabilities exchange never finished: start over. */
+    private fun onSetupStalled() {
+        if (ready || gatt == null || step == "caps") return
+        record(Event.STALLED, step)
+        teardown()
+        report(State.CONNECTING)
+        scheduleRetry()
+    }
+
+    private fun sendCapabilitiesRequest(command: ByteArray, label: String): Boolean {
+        step = "caps"
+        val sent = writeTx(command)
+        record(Event.CAPS_SENT, if (sent) label else "$label · write = false")
+        worker.removeCallbacks(capsTimeout)
+        worker.postDelayed(capsTimeout, CAPS_TIMEOUT_MS)
+        return sent
+    }
+
+    /**
+     * No answer to GET_CAPS. Older remotes speak protocol 0.4, so ask again in that form. If
+     * that goes unanswered too, carry on with the defaults: the mic button and MIC_OPEN may
+     * still work without the exchange.
+     */
+    private fun onCapsTimeout() {
+        if (ready || gatt == null) return
+        if (!legacyCapsTried) {
+            legacyCapsTried = true
+            enqueue { sendCapabilitiesRequest(GET_CAPABILITIES_V04, "0.4") }
+            return
+        }
+        record(Event.STALLED, "caps")
+        worker.removeCallbacks(setupWatchdog)
+        ready = true
+        report(State.READY)
+        if (micWanted) sendMicOpen()
     }
 
     private fun setUp(g: BluetoothGatt) {
@@ -228,25 +280,40 @@ class AtvvRemote(
         val control = service?.getCharacteristic(CONTROL)
         val audio = service?.getCharacteristic(AUDIO)
         if (transmit == null || control == null || audio == null) {
-            // The short ids of the services the remote does offer, e.g. 1812 for HID
-            record(Event.NO_VOICE_SERVICE, g.services.joinToString { it.uuid.toString().substring(4, 8) })
+            record(Event.NO_VOICE_SERVICE, g.services.joinToString(" ") { shortId(it.uuid) })
             report(State.NO_VOICE_SERVICE)
             return
         }
         tx = transmit
         operations.clear()
         operationBusy = false
+        step = "notify"
         g.getService(DEVICE_INFORMATION)?.getCharacteristic(MODEL_NUMBER)?.let { model ->
             enqueue { g.readCharacteristic(model) }
         }
         enqueue { enableNotifications(g, control) }
         enqueue { enableNotifications(g, audio) }
-        enqueue { writeTx(GET_CAPABILITIES) }
+        enqueue {
+            legacyCapsTried = false
+            sendCapabilitiesRequest(GET_CAPABILITIES, "1.0")
+        }
     }
 
     private fun enableNotifications(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic): Boolean {
-        if (!g.setCharacteristicNotification(characteristic, true)) return false
-        val descriptor = characteristic.getDescriptor(CLIENT_CONFIG) ?: return false
+        val name = shortName(characteristic.uuid)
+        if (!g.setCharacteristicNotification(characteristic, true)) {
+            record(Event.NOTIFY, "$name · register = false")
+            return false
+        }
+        val descriptor = characteristic.getDescriptor(CLIENT_CONFIG) ?: run {
+            record(Event.NOTIFY, "$name · no 2902")
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            val code = g.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+            if (code != BluetoothStatusCodes.SUCCESS) record(Event.NOTIFY, "$name · write $code")
+            return code == BluetoothStatusCodes.SUCCESS
+        }
         @Suppress("DEPRECATION")
         descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
         @Suppress("DEPRECATION")
@@ -256,12 +323,32 @@ class AtvvRemote(
     private fun writeTx(command: ByteArray): Boolean {
         val characteristic = tx ?: return false
         val g = gatt ?: return false
+        if (Build.VERSION.SDK_INT >= 33) {
+            val code = g.writeCharacteristic(characteristic, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            if (code != BluetoothStatusCodes.SUCCESS) record(Event.WRITE_FAILED, "tx · $code")
+            return code == BluetoothStatusCodes.SUCCESS
+        }
         characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
         @Suppress("DEPRECATION")
         characteristic.value = command
         @Suppress("DEPRECATION")
         return g.writeCharacteristic(characteristic)
     }
+
+    /** "1812" for a standard Bluetooth UUID, the first eight digits for a custom one. */
+    private fun shortId(uuid: UUID): String {
+        val text = uuid.toString()
+        return if (text.endsWith(BASE_UUID_SUFFIX)) text.substring(4, 8) else text.substring(0, 8)
+    }
+
+    private fun shortName(uuid: UUID) = when (uuid) {
+        CONTROL -> "control"
+        AUDIO -> "audio"
+        TRANSMIT -> "tx"
+        else -> shortId(uuid)
+    }
+
+    private fun hex(bytes: ByteArray) = bytes.take(12).joinToString(" ") { "%02x".format(it) }
 
     private fun enqueue(operation: () -> Boolean) {
         operations.addLast(operation)
@@ -298,10 +385,12 @@ class AtvvRemote(
         if (bytes.isEmpty()) return
         when (bytes[0].toInt() and 0xFF) {
             OP_CAPABILITIES -> {
+                worker.removeCallbacks(capsTimeout)
+                worker.removeCallbacks(setupWatchdog)
                 parseCapabilities(bytes)
                 retryCount = 0
                 ready = true
-                record(Event.READY, "%d.%d".format(version shr 8, version and 0xFF))
+                record(Event.READY, "%d.%d · %s".format(version shr 8, version and 0xFF, hex(bytes)))
                 report(State.READY)
                 if (micWanted) sendMicOpen()
             }
@@ -331,6 +420,7 @@ class AtvvRemote(
                 // A sync marks a frame boundary; drop any partial frame
                 frameFill = 0
             }
+            else -> record(Event.CONTROL, hex(bytes))
         }
     }
 
@@ -424,6 +514,9 @@ class AtvvRemote(
                 }
                 if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                     record(Event.CONNECTED)
+                    step = "mtu"
+                    worker.removeCallbacks(setupWatchdog)
+                    worker.postDelayed(setupWatchdog, SETUP_TIMEOUT_MS)
                     // A larger MTU carries whole audio frames per notification
                     if (!g.requestMtu(REQUESTED_MTU)) discoverServices(g)
                     else worker.postDelayed({ discoverServices(g) }, MTU_FALLBACK_MS)
@@ -437,15 +530,25 @@ class AtvvRemote(
         }
 
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
-            worker.post { discoverServices(g) }
+            worker.post {
+                if (g == gatt) record(Event.MTU, "$mtu · status $status")
+                discoverServices(g)
+            }
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-            worker.post { if (g == gatt) setUp(g) }
+            worker.post {
+                if (g != gatt) return@post
+                record(Event.SERVICES, "status $status · " + g.services.joinToString(" ") { shortId(it.uuid) })
+                setUp(g)
+            }
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            worker.post { operationDone() }
+            worker.post {
+                record(Event.NOTIFY, "${shortName(descriptor.characteristic.uuid)} · status $status")
+                operationDone()
+            }
         }
 
         override fun onCharacteristicWrite(
@@ -453,7 +556,10 @@ class AtvvRemote(
             characteristic: BluetoothGattCharacteristic,
             status: Int
         ) {
-            worker.post { operationDone() }
+            worker.post {
+                if (status != BluetoothGatt.GATT_SUCCESS) record(Event.WRITE_FAILED, "${shortName(characteristic.uuid)} · status $status")
+                operationDone()
+            }
         }
 
         @Deprecated("Still the only callback on Android 12 and older")
@@ -502,6 +608,11 @@ class AtvvRemote(
 
         /** GET_CAPS, protocol 1.0, both ADPCM codecs, all interaction models. */
         private val GET_CAPABILITIES = byteArrayOf(0x0A, 0x01, 0x00, 0x00, 0x03, 0x03)
+        /** GET_CAPS in protocol 0.4's form: version, then the codec mask. */
+        private val GET_CAPABILITIES_V04 = byteArrayOf(0x0A, 0x00, 0x04, 0x00, 0x03)
+        private const val BASE_UUID_SUFFIX = "-0000-1000-8000-00805f9b34fb"
+        private const val SETUP_TIMEOUT_MS = 20_000L
+        private const val CAPS_TIMEOUT_MS = 4_000L
 
         private const val OP_AUDIO_STOP = 0x00
         private const val OP_AUDIO_START = 0x04
@@ -509,7 +620,7 @@ class AtvvRemote(
         private const val OP_AUDIO_SYNC = 0x0A
         private const val OP_CAPABILITIES = 0x0B
         private const val OP_MIC_ERROR = 0x0C
-        private const val MAX_LOG = 14
+        private const val MAX_LOG = 22
 
         private const val CODEC_ADPCM_8K = 0x01
         private const val CODEC_ADPCM_16K = 0x02
