@@ -181,6 +181,51 @@ class LauncherStore(context: Context) {
         prefs.edit().putString(KEY_KNOWN_APPS, JSONArray((known + installed).toList()).toString()).apply()
     }
 
+    /** YouTube channels whose new videos appear on the home screen, in the order added. */
+    fun youTubeChannels(): List<FeedChannel> {
+        val raw = prefs.getString(KEY_CHANNELS, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            List(array.length()) { i ->
+                val o = array.getJSONObject(i)
+                FeedChannel(o.getString("id"), o.optString("title", o.getString("id")))
+            }
+        } catch (e: JSONException) {
+            emptyList()
+        }
+    }
+
+    fun setYouTubeChannels(channels: List<FeedChannel>) {
+        val array = JSONArray()
+        channels.distinctBy { it.id }.forEach { array.put(JSONObject().put("id", it.id).put("title", it.title)) }
+        prefs.edit().putString(KEY_CHANNELS, array.toString()).apply()
+    }
+
+    /** The videos shown last time, so the row appears at once while the feeds reload. */
+    fun cachedVideos(): List<FeedVideo> {
+        val raw = prefs.getString(KEY_VIDEOS, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            List(array.length()) { i ->
+                val o = array.getJSONObject(i)
+                FeedVideo(o.getString("id"), o.optString("title"), o.optString("channel"), o.optString("channelId"), o.optLong("published"))
+            }
+        } catch (e: JSONException) {
+            emptyList()
+        }
+    }
+
+    fun cacheVideos(videos: List<FeedVideo>) {
+        val array = JSONArray()
+        videos.forEach {
+            array.put(
+                JSONObject().put("id", it.id).put("title", it.title).put("channel", it.channel)
+                    .put("channelId", it.channelId).put("published", it.published)
+            )
+        }
+        prefs.edit().putString(KEY_VIDEOS, array.toString()).apply()
+    }
+
     /** Remote buttons the viewer assigned, by Android key code. */
     fun buttonActions(): Map<Int, ButtonAction> {
         val raw = prefs.getString(KEY_BUTTONS, null) ?: return emptyMap()
@@ -236,6 +281,8 @@ class LauncherStore(context: Context) {
         private const val KEY_KNOWN_APPS = "known_apps"
         private const val KEY_WALLPAPER = "wallpaper"
         private const val KEY_BUTTONS = "remote_buttons"
+        private const val KEY_CHANNELS = "youtube_channels"
+        private const val KEY_VIDEOS = "youtube_videos"
         private const val KEY_SMARTTUBE_SWITCHED = "smarttube_switched"
 
         const val WALLPAPER_NONE = "none"

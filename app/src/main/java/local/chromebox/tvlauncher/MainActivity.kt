@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private var availableUpdates: List<AppUpdate> = emptyList()
     private var lastUpdateCheck = 0L
+    private var lastVideoFetch = 0L
 
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(newBase)
@@ -154,6 +155,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         applyFullscreen(store.fullscreen)
         updateRemoteLabel()
         refreshHome()
+        refreshVideos()
         pendingButton?.let {
             pendingButton = null
             runButtonAction(it)
@@ -367,7 +369,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             return openUrl(url, OPENER_YOUTUBE_TV, query)
         }
         if (opener == OPENER_YOUTUBE_TV) {
-            if (openYouTubeTvApp(query)) return
+            if (openYouTubeTvApp(url, query)) return
             val player = Intent(this, WebPlayerActivity::class.java)
                 .setData(uri)
                 .putExtra(WebPlayerActivity.EXTRA_TV_MODE, true)
@@ -394,13 +396,16 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
      * Uses Google's YouTube for Android TV app when it is installed, as on an Android TV box.
      * ChromeOS has no such app, so the launcher falls back to YouTube's TV web interface.
      */
-    private fun openYouTubeTvApp(query: String?): Boolean {
+    private fun openYouTubeTvApp(url: String, query: String?): Boolean {
         if (!isInstalled(YOUTUBE_TV_APP)) return false
         if (query != null) {
             val search = Intent(Intent.ACTION_SEARCH)
                 .setPackage(YOUTUBE_TV_APP)
                 .putExtra(SearchManager.QUERY, query)
             if (startInLauncher(search)) return true
+        }
+        SmartTube.videoUrl(url)?.let { video ->
+            if (startInLauncher(Intent(Intent.ACTION_VIEW, Uri.parse(video)).setPackage(YOUTUBE_TV_APP))) return true
         }
         val launch = packageManager.getLeanbackLaunchIntentForPackage(YOUTUBE_TV_APP)
             ?: packageManager.getLaunchIntentForPackage(YOUTUBE_TV_APP)
@@ -907,6 +912,122 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         }
     }
 
+    // --- YouTube videos on the home screen ---
+
+    /** Shows the last videos at once, then reloads the channel feeds when they are stale. */
+    private fun refreshVideos(force: Boolean = false) {
+        val channels = store.youTubeChannels()
+        home.channelCount = channels.size
+        if (channels.isEmpty()) {
+            home.videos = emptyList()
+            return
+        }
+        if (home.videos.isEmpty()) home.videos = store.cachedVideos()
+        if (!force && System.currentTimeMillis() - lastVideoFetch < VIDEO_REFRESH_MS) return
+        lastVideoFetch = System.currentTimeMillis()
+        io.execute {
+            val feeds = channels.map { channel ->
+                runCatching { YouTubeFeed.parseFeed(YouTubeFeed.fetch(YouTubeFeed.feedUrl(channel.id))) }.getOrNull()
+            }
+            // Offline: keep what is shown
+            if (feeds.all { it == null }) return@execute
+            val videos = YouTubeFeed.latest(feeds.filterNotNull().map { it.videos })
+            runCatching { Thumbnails.prune(this, videos.map { it.thumbnail }) }
+            runOnUiThread {
+                home.videos = videos
+                store.cacheVideos(videos)
+            }
+        }
+    }
+
+    /** Plays the video the way the YouTube page on the home screen opens: SmartTube or YouTube's TV interface. */
+    override fun openVideo(video: FeedVideo) {
+        val opener = store.webShortcuts().firstOrNull { it.opener == OPENER_SMARTTUBE || it.opener == OPENER_YOUTUBE_TV }?.opener
+            ?: if (smartTubePackage() != null) OPENER_SMARTTUBE else OPENER_YOUTUBE_TV
+        openUrl(YouTubeFeed.tvWatchUrl(video.id), opener)
+    }
+
+    override fun videoMenu(video: FeedVideo) {
+        showMenu(
+            video.channel,
+            listOf(
+                getString(R.string.channel_remove, video.channel) to { removeChannel(video.channelId) },
+                getString(R.string.channels_manage) to { channelsClicked() }
+            )
+        )
+    }
+
+    override fun channelsClicked() {
+        val channels = store.youTubeChannels()
+        val labels = listOf(getString(R.string.channel_add)) + channels.map { it.title }
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.channels_title)
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which == 0) addChannel() else confirmRemoveChannel(channels[which - 1])
+            }
+            .setNegativeButton(R.string.close, null)
+            .show()
+    }
+
+    private fun addChannel() {
+        val field = EditText(this).apply {
+            hint = getString(R.string.channel_hint)
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        val frame = FrameLayout(this).apply {
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(field)
+        }
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.channel_add)
+            .setView(frame)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val input = field.text.toString().trim()
+                if (input.isNotEmpty()) findChannel(input)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Accepts a channel or video link, an @handle, or a channel name to search for. */
+    private fun findChannel(input: String) {
+        toast(getString(R.string.channel_searching))
+        io.execute {
+            val found = runCatching {
+                val id = YouTubeFeed.channelIdIn(input)
+                    ?: YouTubeFeed.channelIdInPage(YouTubeFeed.fetch(YouTubeFeed.lookupUrl(input)))
+                    ?: throw IOException("no channel")
+                val feed = YouTubeFeed.parseFeed(YouTubeFeed.fetch(YouTubeFeed.feedUrl(id)))
+                FeedChannel(id, feed.title.ifEmpty { id })
+            }.getOrNull()
+            runOnUiThread {
+                if (found == null) {
+                    toast(getString(R.string.channel_not_found, input))
+                } else {
+                    store.setYouTubeChannels(store.youTubeChannels() + found)
+                    toast(getString(R.string.channel_added, found.title))
+                    refreshVideos(force = true)
+                }
+            }
+        }
+    }
+
+    private fun confirmRemoveChannel(channel: FeedChannel) {
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setMessage(getString(R.string.channel_remove_confirm, channel.title))
+            .setPositiveButton(R.string.delete) { _, _ -> removeChannel(channel.id) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun removeChannel(id: String) {
+        store.setYouTubeChannels(store.youTubeChannels().filter { it.id != id })
+        home.videos = home.videos.filter { it.channelId != id }
+        store.cacheVideos(home.videos)
+        home.channelCount = store.youTubeChannels().size
+    }
+
     // --- Remote buttons ---
 
     /** A button pressed in the web player arrives here; it runs once the home screen resumes. */
@@ -1295,6 +1416,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         private const val BROWSER4K = "local.chromebox.browser4k"
         private const val YOUTUBE_TV_APP = "com.google.android.youtube.tv"
         private const val MAX_LISTEN_MS = 15_000L
+        private const val VIDEO_REFRESH_MS = 20 * 60 * 1000L
         /** Long enough for the Bluetooth link to come back after the web player closes. */
         private const val MIC_OPEN_TIMEOUT_MS = 10_000L
         /** How long a mic key waits for the remote's own Bluetooth request before acting. */

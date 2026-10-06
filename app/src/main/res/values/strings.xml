@@ -176,6 +176,28 @@
     <string name="key_channel_down">Kênh −</string>
     <string name="key_code">Phím mã %1$d</string>
 
+    <!-- YouTube channels on the home screen -->
+    <string name="row_videos">Video mới trên YouTube</string>
+    <string name="channels_title">Kênh YouTube trên Trang chủ</string>
+    <string name="channels_none">Chưa có kênh nào · bấm để thêm kênh bạn hay xem</string>
+    <string name="channels_count">Đang theo dõi %1$d kênh · video mới hiện ở Trang chủ</string>
+    <string name="channels_manage">Kênh YouTube…</string>
+    <string name="channel_add">Thêm kênh…</string>
+    <string name="channel_add_first">Thêm kênh YouTube để hiện video mới ở đây</string>
+    <string name="channel_hint">Tên kênh, @tên-kênh hoặc link kênh/video</string>
+    <string name="channel_searching">Đang tìm kênh…</string>
+    <string name="channel_added">Đã thêm kênh %1$s</string>
+    <string name="channel_not_found">Không tìm thấy kênh “%1$s”</string>
+    <string name="channel_remove">Bỏ kênh %1$s khỏi Trang chủ</string>
+    <string name="age_now">Vừa xong</string>
+    <string name="age_minutes">%1$d phút trước</string>
+    <string name="age_hours">%1$d giờ trước</string>
+    <string name="age_days">%1$d ngày trước</string>
+    <string name="age_weeks">%1$d tuần trước</string>
+    <string name="age_months">%1$d tháng trước</string>
+    <string name="age_years">%1$d năm trước</string>
+    <string name="channel_remove_confirm">Bỏ kênh “%1$s” khỏi Trang chủ?</string>
+
     <!-- SmartTube -->
     <string name="smarttube_title">SmartTube</string>
     <string name="smarttube_installed">Đã cài · ô YouTube mở bằng SmartTube · bấm để mở</string>

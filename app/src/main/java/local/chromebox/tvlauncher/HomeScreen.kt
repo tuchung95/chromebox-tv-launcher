@@ -172,6 +172,9 @@ class HomeState {
     var buttonsLabel by mutableStateOf("")
     /** Package of the installed SmartTube build, or null. */
     var smartTube by mutableStateOf<String?>(null)
+    /** New videos from the YouTube channels the viewer follows, newest first. */
+    var videos by mutableStateOf(emptyList<FeedVideo>())
+    var channelCount by mutableIntStateOf(0)
 
     /** Raised on Back: focus returns to the top navigation, then to the Home tab. */
     var backRequest by mutableIntStateOf(0)
@@ -193,6 +196,9 @@ interface HomeActions {
     fun buttonsClicked()
     fun smartTubeClicked()
     fun openSmartTube(section: SmartTube.Section)
+    fun openVideo(video: FeedVideo)
+    fun videoMenu(video: FeedVideo)
+    fun channelsClicked()
     fun updateClicked()
     fun toggleFullscreen()
     fun wallpaperClicked()
@@ -433,6 +439,16 @@ private fun HomeTabContent(state: HomeState, actions: HomeActions, listState: an
                 item(key = "add") {
                     val start = featured.isEmpty() && state.web.isEmpty()
                     AddCard(actions, Modifier.width(FeatureCardWidth).then(if (start) Modifier.focusRequester(contentStart) else Modifier))
+                }
+            }
+        }
+        item(key = "videos") {
+            CardRow(stringResource(R.string.row_videos)) {
+                items(state.videos, key = { "video:" + it.id }) { video ->
+                    VideoCard(video, actions, Modifier.width(FeatureCardWidth))
+                }
+                item(key = "channels") {
+                    ChannelsCard(state.channelCount, actions, Modifier.width(if (state.videos.isEmpty()) FeatureCardWidth else AppCardWidth))
                 }
             }
         }
@@ -805,6 +821,15 @@ private fun SettingsTabContent(state: HomeState, actions: HomeActions, contentSt
                 icon = { Icon(Icons.Filled.Build, contentDescription = null, modifier = Modifier.size(24.dp)) }
             )
         }
+        item(key = "channels") {
+            SettingItem(
+                title = stringResource(R.string.channels_title),
+                detail = if (state.channelCount == 0) stringResource(R.string.channels_none)
+                else stringResource(R.string.channels_count, state.channelCount),
+                onClick = actions::channelsClicked,
+                icon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(24.dp)) }
+            )
+        }
         item(key = "smarttube") {
             SettingItem(
                 title = stringResource(R.string.smarttube_title),
@@ -957,6 +982,101 @@ private fun AddCard(actions: HomeActions, modifier: Modifier) {
         ) {
             Icon(Icons.Filled.Add, contentDescription = null, tint = Palette.Accent, modifier = Modifier.size(40.dp))
             Text(stringResource(R.string.add_web), style = MaterialTheme.typography.titleMedium, color = Palette.Text)
+        }
+    }
+}
+
+/** A new video from a followed channel: its thumbnail, title, channel and age. */
+@Composable
+private fun VideoCard(video: FeedVideo, actions: HomeActions, modifier: Modifier) {
+    val thumbnail = rememberThumbnail(video.thumbnail)
+    val age = ageText(video.published)
+    CompactCard(
+        onClick = { actions.openVideo(video) },
+        onLongClick = { actions.videoMenu(video) },
+        modifier = modifier
+            .aspectRatio(16f / 9f)
+            .focusOnHover()
+            .contextMenu { actions.videoMenu(video) }
+            .pointerClick({ actions.openVideo(video) }, { actions.videoMenu(video) }),
+        image = {
+            if (thumbnail != null) {
+                Image(thumbnail, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else {
+                Box(Modifier.fillMaxSize().background(Palette.Surface))
+            }
+        },
+        title = {
+            Text(
+                video.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        },
+        subtitle = {
+            Text(
+                listOf(video.channel, age).filter { it.isNotEmpty() }.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
+            )
+        },
+        shape = CardDefaults.shape(cardShape),
+        scale = CardDefaults.scale(focusedScale = 1.05f),
+        border = CardDefaults.border(focusedBorder = focusedBorder),
+        glow = CardDefaults.glow(focusedGlow = focusedGlow)
+    )
+}
+
+/** "5 phút trước": in Vietnamese like the rest of the launcher, whatever the system language. */
+@Composable
+private fun ageText(published: Long): String {
+    if (published <= 0) return ""
+    val minutes = ((System.currentTimeMillis() - published) / 60_000).coerceAtLeast(0)
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        minutes < 1 -> stringResource(R.string.age_now)
+        hours < 1 -> stringResource(R.string.age_minutes, minutes)
+        days < 1 -> stringResource(R.string.age_hours, hours)
+        days < 7 -> stringResource(R.string.age_days, days)
+        days < 30 -> stringResource(R.string.age_weeks, days / 7)
+        days < 365 -> stringResource(R.string.age_months, days / 30)
+        else -> stringResource(R.string.age_years, days / 365)
+    }
+}
+
+/** Adds or manages the YouTube channels whose videos fill the row. */
+@Composable
+private fun ChannelsCard(channelCount: Int, actions: HomeActions, modifier: Modifier) {
+    Card(
+        onClick = actions::channelsClicked,
+        modifier = modifier
+            .aspectRatio(16f / 9f)
+            .focusOnHover()
+            .pointerClick(actions::channelsClicked),
+        shape = CardDefaults.shape(cardShape),
+        colors = CardDefaults.colors(containerColor = Palette.Surface, focusedContainerColor = Palette.SurfaceFocused),
+        scale = CardDefaults.scale(focusedScale = 1.05f),
+        border = CardDefaults.border(focusedBorder = focusedBorder),
+        glow = CardDefaults.glow(focusedGlow = focusedGlow)
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null, tint = Palette.Accent, modifier = Modifier.size(32.dp))
+            Text(
+                stringResource(if (channelCount == 0) R.string.channel_add_first else R.string.channels_manage),
+                style = MaterialTheme.typography.titleSmall,
+                color = Palette.Text,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }
