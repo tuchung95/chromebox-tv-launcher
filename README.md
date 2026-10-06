@@ -69,7 +69,7 @@ Lần build đầu tự tải model tiếng Việt khoảng 32 MB và kiểm tra
 
 Bản phát hành được ký bằng khóa riêng đọc từ `~/.android/chromebox-tv-release.properties`. Nếu không có file này, bản build dùng khóa debug. Một bản ký bằng khóa khác không cập nhật đè được bản đang cài.
 
-Để phát hành phiên bản mới, chạy lệnh sau. Script nâng số phiên bản, chạy test, build và ký APK, gắn tag rồi tạo GitHub Release kèm `updates.json` và hồ sơ biên dịch (`.dm`). Trình cập nhật cài APK cùng hồ sơ này để Android biên dịch launcher ngay lúc cài. Thiếu hồ sơ, Chromebox chạy launcher ở chế độ thông dịch và Trang chủ bị giật cho tới khi Android tự biên dịch. Khi cài bằng adb, dùng `adb install-multiple Chromebox-TV-x.y.z.apk Chromebox-TV-x.y.z-api31.dm`:
+Để phát hành phiên bản mới, chạy lệnh sau. Script nâng số phiên bản, chạy test, build và ký APK, gắn tag rồi tạo GitHub Release kèm `updates.json` và hồ sơ biên dịch (`.dm`). Trình cập nhật cài APK cùng hồ sơ này để Android biên dịch launcher ngay lúc cài. Thiếu hồ sơ, Chromebox chạy launcher ở chế độ thông dịch và Trang chủ bị giật cho tới khi Android tự biên dịch. Khi cài bằng adb, đổi tên file hồ sơ cho trùng tên APK (Android chỉ ghép hai file cùng tên), ví dụ `Chromebox-TV-x.y.z-api31.dm` thành `Chromebox-TV-x.y.z.dm`, rồi chạy `adb install-multiple Chromebox-TV-x.y.z.apk Chromebox-TV-x.y.z.dm`:
 
 ```
 scripts/release.sh "Nội dung thay đổi"
