@@ -60,6 +60,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -91,6 +92,7 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -126,6 +128,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 /** One Android app on the home screen. */
 data class AppTile(
@@ -274,6 +277,7 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
     val contentStart = remember { FocusRequester() }
     var navHasFocus by remember { mutableStateOf(false) }
     val homeList = rememberLazyListState()
+    val windowInfo = LocalWindowInfo.current
 
     // Start inside the content, so OK on the remote opens the featured item right away
     LaunchedEffect(Unit) {
@@ -292,10 +296,15 @@ fun HomeScreen(state: HomeState, actions: HomeActions) {
         }
     }
 
-    // An assigned remote button: open the tab and put focus on its first item
+    // An assigned remote button: open the tab and put focus on its first item. A request from
+    // another app arrives before the window has focus. When focus comes, Compose hands it to
+    // the tab row, which restores its last focused tab and so switched back to it. Wait for
+    // the window, and move focus to the new tab before its content replaces the old one
     LaunchedEffect(state.tabRequest) {
         val request = state.tabRequest
         if (request.serial == 0) return@LaunchedEffect
+        snapshotFlow { windowInfo.isWindowFocused }.first { it }
+        runCatching { tabRequesters.getValue(request.tab).requestFocus() }
         state.tab = request.tab
         if (request.tab == HomeTab.HOME) homeList.scrollToItem(0)
         withFrameNanos { }
