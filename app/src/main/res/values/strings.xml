@@ -103,7 +103,7 @@
     <string name="remote_no_permission">Remote: cần quyền Bluetooth</string>
     <string name="remote_no_voice">Remote: không có dịch vụ giọng nói</string>
     <string name="remote_blocked">Remote: Android chặn micro của remote</string>
-    <string name="remote_help">Ghép đôi remote Xiaomi trong Cài đặt › Bluetooth của ChromeOS. Khi Chromebox TV đang mở, bấm nút micro trên remote rồi nói, ví dụ:\n• mở YouTube\n• tìm trên YouTube nhạc Trịnh\n• mở VLC\nNếu nút micro lại mở Trợ lý hoặc trình chạy của ChromeOS, hãy gán một nút khác thành “Nói lệnh” trong Cài đặt › Nút remote.</string>
+    <string name="remote_help">Ghép đôi remote Xiaomi trong Cài đặt › Bluetooth của ChromeOS.\n\nTrên ChromeOS, Android chỉ cho ứng dụng hệ thống dùng micro của remote. Nút micro của remote gửi phím F5, và ChromeOS dùng F5 để hiện các cửa sổ. Để nút micro mở tìm kiếm (SmartTube nếu đã cài), vào Cài đặt ChromeOS › Thiết bị › Bàn phím và phương thức nhập, chọn bàn phím của remote và bật tùy chọn dùng các phím ở hàng trên cùng làm phím chức năng. Muốn nút micro làm việc khác, gán nó trong Cài đặt › Nút remote.\n\nTrên Android TV box, bấm nút micro rồi nói, ví dụ: mở YouTube, tìm trên YouTube nhạc Trịnh, mở VLC.</string>
     <string name="remote_reconnect">Kết nối lại</string>
     <string name="remote_test_mic">Thử micro</string>
     <string name="remote_details">Android %1$s · %2$d thiết bị Bluetooth đã ghép đôi\nNhật ký kết nối:</string>
@@ -150,6 +150,8 @@
     <string name="button_cleared">Đã bỏ gán %1$s</string>
     <string name="button_web_missing">Trang web của nút này đã bị xóa</string>
     <string name="button_no_web">Chưa có trang web nào</string>
+    <string name="action_search">Mở Tìm kiếm của launcher</string>
+    <string name="action_smarttube_search">Tìm trên SmartTube</string>
     <string name="action_voice">Nói lệnh bằng micro remote</string>
     <string name="action_home">Về Trang chủ</string>
     <string name="action_apps">Mở tất cả ứng dụng</string>
@@ -159,6 +161,7 @@
     <string name="action_ignore">Không làm gì (tắt nút)</string>
     <string name="action_open_target">Mở %1$s</string>
     <string name="action_web_deleted">trang đã xóa</string>
+    <string name="key_f5">F5 (nút micro)</string>
     <string name="key_menu">Menu</string>
     <string name="key_search">Tìm kiếm</string>
     <string name="key_voice">Micro</string>

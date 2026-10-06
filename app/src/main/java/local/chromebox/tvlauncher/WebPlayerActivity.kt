@@ -194,7 +194,13 @@ class WebPlayerActivity : Activity() {
                 event.keyCode == KeyEvent.KEYCODE_ESCAPE && customView != null -> {
                     hideCustomView(); return true
                 }
-                event.keyCode == KeyEvent.KEYCODE_F5 || (event.isCtrlPressed && event.keyCode == KeyEvent.KEYCODE_R) -> {
+                // F5 is the Xiaomi remote's mic button (see MainActivity): search, like the launcher.
+                // In YouTube's TV interface that is YouTube's own search page
+                event.keyCode == KeyEvent.KEYCODE_F5 -> {
+                    if (tvMode) load(YOUTUBE_TV_SEARCH) else runInLauncher(ButtonAction.SmartTubeSearch)
+                    return true
+                }
+                event.isCtrlPressed && event.keyCode == KeyEvent.KEYCODE_R -> {
                     webView?.reload(); return true
                 }
             }
@@ -418,6 +424,8 @@ class WebPlayerActivity : Activity() {
         /** A Samsung smart TV; YouTube serves its TV interface only to TV browsers. */
         private const val TV_USER_AGENT = "Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) 85.0.4183.93/6.0 TV Safari/537.36"
+
+        private const val YOUTUBE_TV_SEARCH = "https://www.youtube.com/tv#/search"
 
         private val YOUTUBE_ORIGINS = setOf("https://www.youtube.com", "https://youtube.com", "https://m.youtube.com")
 

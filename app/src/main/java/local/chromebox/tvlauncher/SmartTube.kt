@@ -36,6 +36,9 @@ object SmartTube {
         fun component(pkg: String) = ComponentName(pkg, "com.liskovsoft.smartyoutubetv2.tv.launchers.$activity")
     }
 
+    /** SmartTube's search screen, opened directly. */
+    fun searchComponent(pkg: String) = ComponentName(pkg, "com.liskovsoft.smartyoutubetv2.tv.launchers.SearchLauncherActivity")
+
     /** SmartTube reads the query from YouTube's own search address. */
     fun searchUrl(encodedQuery: String) = "https://www.youtube.com/results?search_query=$encodedQuery"
 

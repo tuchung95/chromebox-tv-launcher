@@ -24,6 +24,16 @@ sealed interface ButtonAction {
         override val value = "fullscreen"
     }
 
+    /** The launcher's Search tab. */
+    data object Search : ButtonAction {
+        override val value = "search"
+    }
+
+    /** SmartTube's search screen, or the launcher's Search tab without SmartTube. */
+    data object SmartTubeSearch : ButtonAction {
+        override val value = "smarttube_search"
+    }
+
     /** Swallows the button, for keys that do something unwanted. */
     data object Ignore : ButtonAction {
         override val value = "none"
@@ -46,6 +56,8 @@ sealed interface ButtonAction {
             value == Home.value -> Home
             value == AllApps.value -> AllApps
             value == Fullscreen.value -> Fullscreen
+            value == Search.value -> Search
+            value == SmartTubeSearch.value -> SmartTubeSearch
             value == Ignore.value -> Ignore
             value.startsWith(APP) && value.length > APP.length -> OpenApp(value.removePrefix(APP))
             value.startsWith(WEB) && value.length > WEB.length -> OpenWeb(value.removePrefix(WEB))
@@ -80,6 +92,8 @@ object RemoteButtons {
 
     /** Names of common remote buttons, as string resources. Other keys use Android's name. */
     val NAMES: Map<Int, Int> = mapOf(
+        // Xiaomi voice remotes send F5 for the mic button when no app uses their voice service
+        KeyEvent.KEYCODE_F5 to R.string.key_f5,
         KeyEvent.KEYCODE_MENU to R.string.key_menu,
         KeyEvent.KEYCODE_SEARCH to R.string.key_search,
         KeyEvent.KEYCODE_VOICE_ASSIST to R.string.key_voice,

@@ -54,7 +54,9 @@ Một ô web tìm kiếm được bằng giọng nói khi ô đó có địa ch�
 
 Kết nối remote được thử theo đặc tả giao thức, nhưng chưa được kiểm chứng trên mọi phiên bản ChromeOS. Nếu nút Remote báo "chưa ghép đôi" dù remote đã ghép, hãy chọn đúng remote trong mục Remote › Chọn remote.
 
-Nếu nút micro lại mở Trợ lý hoặc trình chạy của ChromeOS, hãy gán một nút khác thành "Nói lệnh" trong Cài đặt › Nút remote. Launcher tự mở micro của remote qua Bluetooth, giống nút micro trên màn hình của Android TV. Mục Cài đặt › Remote giọng nói có nút Thử micro và nhật ký kết nối Bluetooth, cho biết kết nối dừng ở bước nào.
+**Trên ChromeOS, micro của remote không dùng được.** Android 13 trên ChromeOS chỉ cho ứng dụng hệ thống truy cập dịch vụ giọng nói của remote Android TV (cần quyền `BLUETOOTH_PRIVILEGED`). Launcher nhận ra điều này, ngừng kết nối và báo trong Cài đặt › Remote giọng nói. Giọng nói vẫn chạy trên Android TV box.
+
+Khi không có dịch vụ giọng nói, nút micro của remote Xiaomi gửi phím F5, và ChromeOS dùng F5 để hiện các cửa sổ. Để nút micro mở tìm kiếm, mặc định là SmartTube nếu đã cài, vào Cài đặt ChromeOS › Thiết bị › Bàn phím và phương thức nhập, chọn bàn phím của remote và bật tùy chọn dùng các phím ở hàng trên cùng làm phím chức năng. Trong YouTube giao diện TV, nút micro mở trang tìm kiếm của YouTube. Muốn nút micro làm việc khác, gán nó trong Cài đặt › Nút remote.
 
 ## Build từ mã nguồn
 

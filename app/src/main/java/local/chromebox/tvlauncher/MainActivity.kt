@@ -191,6 +191,12 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) onVoiceKey()
             return true
         }
+        // The Xiaomi remote's mic button arrives as F5 once ChromeOS passes the top-row keys
+        // on as function keys; unless assigned otherwise it opens search
+        if (code == KeyEvent.KEYCODE_F5) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) runButtonAction(ButtonAction.SmartTubeSearch)
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_F11) {
             toggleFullscreen()
             return true
@@ -434,6 +440,13 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         // An older SmartTube may lack the section; open the app instead
         val launch = launchIntentFor(pkg)
         if (launch == null || !startInLauncher(launch)) toast(getString(R.string.app_missing))
+    }
+
+    /** SmartTube's search screen when it is installed, else the launcher's Search tab. */
+    private fun openSmartTubeSearch() {
+        val pkg = smartTubePackage()
+        if (pkg != null && startInLauncher(Intent().setComponent(SmartTube.searchComponent(pkg)))) return
+        home.showTab(HomeTab.SEARCH)
     }
 
     override fun smartTubeClicked() {
@@ -1046,6 +1059,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             ButtonAction.Home -> home.showTab(HomeTab.HOME)
             ButtonAction.AllApps -> home.showTab(HomeTab.APPS)
             ButtonAction.Fullscreen -> toggleFullscreen()
+            ButtonAction.Search -> home.showTab(HomeTab.SEARCH)
+            ButtonAction.SmartTubeSearch -> openSmartTubeSearch()
             ButtonAction.Ignore -> Unit
             is ButtonAction.OpenApp -> launchApp(action.pkg)
             is ButtonAction.OpenWeb -> {
@@ -1103,6 +1118,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun chooseAction(keyCode: Int) {
         val choices = mutableListOf<Pair<String, () -> Unit>>(
+            getString(R.string.action_smarttube_search) to { assign(keyCode, ButtonAction.SmartTubeSearch) },
+            getString(R.string.action_search) to { assign(keyCode, ButtonAction.Search) },
             getString(R.string.action_voice) to { assign(keyCode, ButtonAction.Voice) },
             getString(R.string.action_home) to { assign(keyCode, ButtonAction.Home) },
             getString(R.string.action_apps) to { assign(keyCode, ButtonAction.AllApps) },
@@ -1142,6 +1159,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         ButtonAction.Home -> getString(R.string.action_home)
         ButtonAction.AllApps -> getString(R.string.action_apps)
         ButtonAction.Fullscreen -> getString(R.string.action_fullscreen)
+        ButtonAction.Search -> getString(R.string.action_search)
+        ButtonAction.SmartTubeSearch -> getString(R.string.action_smarttube_search)
         ButtonAction.Ignore -> getString(R.string.action_ignore)
         is ButtonAction.OpenApp ->
             getString(R.string.action_open_target, apps.firstOrNull { it.pkg == action.pkg }?.label ?: action.pkg)
@@ -1163,7 +1182,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         // The mic button normally starts a session over Bluetooth by itself. When only the key
         // arrives, the launcher opens the microphone
         if (remoteState == AtvvRemote.State.BLOCKED) {
-            startVoice()
+            // No voice on this Android: search by typing instead
+            runButtonAction(ButtonAction.SmartTubeSearch)
         } else if (remoteState == AtvvRemote.State.READY || remoteState == AtvvRemote.State.CONNECTING) {
             main.removeCallbacks(voiceKeyFallback)
             main.postDelayed(voiceKeyFallback, VOICE_KEY_GRACE_MS)
