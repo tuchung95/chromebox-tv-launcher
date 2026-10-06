@@ -25,7 +25,10 @@ data class AppUpdate(
     val versionName: String,
     val apkUrl: String,
     val sha256: String,
-    val installedVersion: Long?
+    val installedVersion: Long?,
+    /** The compile profile (.dm) for this Android version, so the app is compiled as it installs. */
+    val profileUrl: String? = null,
+    val profileSha256: String? = null
 ) {
     val isInstalled get() = installedVersion != null
     val hasUpdate get() = installedVersion == null || versionCode > installedVersion
@@ -33,8 +36,14 @@ data class AppUpdate(
 
 /**
  * In-app updates. Each GitHub release carries `updates.json` (see scripts/release.sh):
- * `{"apps":[{"package":"…","name":"…","versionCode":2,"versionName":"1.0.2","apk":"https://…apk","sha256":"…"}]}`
- * A relative `apk` path is resolved against the manifest address, so any web server works too.
+ * `{"apps":[{"package":"…","name":"…","versionCode":2,"versionName":"1.0.2","apk":"https://…apk","sha256":"…",
+ * "profiles":[{"minSdk":31,"url":"https://…dm","sha256":"…"}]}]}`
+ * A relative `apk` or profile path is resolved against the manifest address, so any web server
+ * works too.
+ *
+ * The profile (dex metadata, .dm) lets Android compile the app while installing it. Without
+ * it the Chromebox runs the update interpreted, and the home screen stutters, until Android
+ * compiles it in an idle moment, which seldom comes on ChromeOS.
  *
  * Downloads are checked against the SHA-256 and the expected package and version before
  * they are handed to the system installer. Android still asks the viewer to confirm each
@@ -52,6 +61,11 @@ class UpdateManager(private val context: Context) {
         return List(apps.length()) { i ->
             val o = apps.getJSONObject(i)
             val pkg = o.getString("package")
+            val profile = o.optJSONArray("profiles")?.let { list ->
+                (0 until list.length()).map { list.getJSONObject(it) }.firstOrNull {
+                    Build.VERSION.SDK_INT >= it.optInt("minSdk", 0) && Build.VERSION.SDK_INT <= it.optInt("maxSdk", Int.MAX_VALUE)
+                }
+            }
             AppUpdate(
                 pkg = pkg,
                 name = o.optString("name", pkg),
@@ -59,7 +73,9 @@ class UpdateManager(private val context: Context) {
                 versionName = o.optString("versionName", o.getLong("versionCode").toString()),
                 apkUrl = URL(base, o.getString("apk")).toString(),
                 sha256 = o.getString("sha256").lowercase(),
-                installedVersion = installedVersion(pkg)
+                installedVersion = installedVersion(pkg),
+                profileUrl = profile?.let { URL(base, it.getString("url")).toString() },
+                profileSha256 = profile?.optString("sha256")?.lowercase()
             )
         }
     }
@@ -85,10 +101,17 @@ class UpdateManager(private val context: Context) {
         return target
     }
 
-    /** Downloads an APK into the cache as [name] and checks its SHA-256; [onProgress] receives 0–100. */
-    private fun fetchApk(url: String, sha256: String, name: String, onProgress: (Int) -> Unit): File {
+    /** Downloads the compile profile after [download]; null when the release has none for this Android. */
+    fun downloadProfile(update: AppUpdate): File? {
+        val url = update.profileUrl ?: return null
+        val sha256 = update.profileSha256 ?: return null
+        return fetchApk(url, sha256, "${update.pkg}-${update.versionCode}.dm", onProgress = {}, clearFolder = false)
+    }
+
+    /** Downloads a file into the cache as [name] and checks its SHA-256; [onProgress] receives 0–100. */
+    private fun fetchApk(url: String, sha256: String, name: String, onProgress: (Int) -> Unit, clearFolder: Boolean = true): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-        dir.listFiles()?.forEach { it.delete() }
+        if (clearFolder) dir.listFiles()?.forEach { it.delete() }
         val target = File(dir, name)
         val digest = MessageDigest.getInstance("SHA-256")
         val connection = open(url)
@@ -124,18 +147,28 @@ class UpdateManager(private val context: Context) {
         return target
     }
 
-    /** Hands the APK to the system installer, which shows its confirmation dialog. */
-    fun install(apk: File, pkg: String) {
+    /**
+     * Hands the APK, and its compile [profile] when there is one, to the system installer,
+     * which shows its confirmation dialog.
+     */
+    fun install(apk: File, pkg: String, profile: File? = null) {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(pkg)
-            setSize(apk.length())
+            setSize(apk.length() + (profile?.length() ?: 0))
         }
         val sessionId = installer.createSession(params)
         installer.openSession(sessionId).use { session ->
             session.openWrite("base.apk", 0, apk.length()).use { out ->
                 apk.inputStream().use { it.copyTo(out) }
                 session.fsync(out)
+            }
+            // Same base name as the APK, which is how Android pairs dex metadata with it
+            if (profile != null) {
+                session.openWrite("base.dm", 0, profile.length()).use { out ->
+                    profile.inputStream().use { it.copyTo(out) }
+                    session.fsync(out)
+                }
             }
             val intent = Intent(context, InstallResultReceiver::class.java)
                 .putExtra(InstallResultReceiver.EXTRA_PACKAGE, pkg)

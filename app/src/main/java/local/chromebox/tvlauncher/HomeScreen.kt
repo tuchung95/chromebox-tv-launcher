@@ -66,13 +66,18 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
@@ -103,7 +108,6 @@ import androidx.tv.material3.Carousel
 import androidx.tv.material3.CarouselDefaults
 import androidx.tv.material3.CompactCard
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
@@ -588,21 +592,6 @@ private fun HeroArt(item: Featured) {
             .fillMaxSize()
             .background(Brush.linearGradient(listOf(lerp(base, Color.Black, 0.55f), base, lerp(base, Color.White, 0.12f))))
     ) {
-        // Soft rings give the flat colour some depth
-        Box(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .offset(x = 80.dp)
-                .size(420.dp)
-                .background(Color.White.copy(alpha = 0.05f), CircleShape)
-        )
-        Box(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .offset(x = 20.dp, y = 60.dp)
-                .size(260.dp)
-                .background(Color.White.copy(alpha = 0.05f), CircleShape)
-        )
         when (item) {
             is Featured.App -> {
                 val banner = item.app.banner
@@ -882,7 +871,6 @@ private fun SettingItem(
 
 private val focusedBorder = Border(BorderStroke(3.dp, Palette.Text), shape = RoundedCornerShape(12.dp))
 private val cardShape = RoundedCornerShape(12.dp)
-private val focusedGlow = Glow(Palette.Accent.copy(alpha = 0.35f), 12.dp)
 
 @Composable
 private fun WebCard(shortcut: WebShortcut, actions: HomeActions, modifier: Modifier) {
@@ -931,7 +919,6 @@ private fun WebCard(shortcut: WebShortcut, actions: HomeActions, modifier: Modif
         shape = CardDefaults.shape(cardShape),
         scale = CardDefaults.scale(focusedScale = 1.05f),
         border = CardDefaults.border(focusedBorder = focusedBorder),
-        glow = CardDefaults.glow(focusedGlow = focusedGlow)
     )
 }
 
@@ -947,7 +934,6 @@ private fun AddCard(actions: HomeActions, modifier: Modifier) {
         colors = CardDefaults.colors(containerColor = Palette.Surface, focusedContainerColor = Palette.SurfaceFocused),
         scale = CardDefaults.scale(focusedScale = 1.05f),
         border = CardDefaults.border(focusedBorder = focusedBorder),
-        glow = CardDefaults.glow(focusedGlow = focusedGlow)
     ) {
         Column(
             Modifier.fillMaxSize(),
@@ -1001,7 +987,6 @@ private fun VideoCard(video: FeedVideo, actions: HomeActions, modifier: Modifier
         shape = CardDefaults.shape(cardShape),
         scale = CardDefaults.scale(focusedScale = 1.05f),
         border = CardDefaults.border(focusedBorder = focusedBorder),
-        glow = CardDefaults.glow(focusedGlow = focusedGlow)
     )
 }
 
@@ -1036,7 +1021,6 @@ private fun ChannelsCard(channelCount: Int, actions: HomeActions, modifier: Modi
         colors = CardDefaults.colors(containerColor = Palette.Surface, focusedContainerColor = Palette.SurfaceFocused),
         scale = CardDefaults.scale(focusedScale = 1.05f),
         border = CardDefaults.border(focusedBorder = focusedBorder),
-        glow = CardDefaults.glow(focusedGlow = focusedGlow)
     ) {
         Column(
             Modifier.fillMaxSize().padding(12.dp),
@@ -1069,7 +1053,6 @@ private fun AppCard(app: AppTile, inFavorites: Boolean, actions: HomeActions, mo
         colors = CardDefaults.colors(containerColor = Palette.Surface, focusedContainerColor = Palette.SurfaceFocused),
         scale = CardDefaults.scale(focusedScale = 1.1f),
         border = CardDefaults.border(focusedBorder = focusedBorder),
-        glow = CardDefaults.glow(focusedGlow = focusedGlow)
     ) {
         Box(Modifier.fillMaxSize()) {
             if (app.banner != null) {
@@ -1220,46 +1203,51 @@ private val WallpaperStyles = mapOf(
 )
 
 /**
- * The home screen background. Photos get a dark scrim, darker at the top and bottom where
- * the navigation and rows sit, so text keeps the high contrast TV guidelines ask for.
+ * The home screen background, drawn as one ready-made image. The Chromebox drives a 4K screen
+ * and redraws all of it on every frame, so several full-screen gradients per frame made the
+ * home screen stutter. Photos come with their dark scrim already applied (see MainActivity).
  */
 @Composable
 private fun Wallpaper(style: String, photo: ImageBitmap?) {
+    val image = if (style == LauncherStore.WALLPAPER_PHOTO) photo else remember(style) { bakeWallpaper(style) }
     Box(Modifier.fillMaxSize().background(Palette.Background)) {
-        if (style == LauncherStore.WALLPAPER_PHOTO && photo != null) {
-            Image(photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = 0.70f),
-                            0.45f to Color.Black.copy(alpha = 0.45f),
-                            1f to Color.Black.copy(alpha = 0.80f)
-                        )
-                    )
-            )
-        } else {
-            val (base, glows) = WallpaperStyles[style] ?: return@Box
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        drawRect(base)
-                        glows.forEach { glow ->
-                            drawRect(
-                                Brush.radialGradient(
-                                    listOf(glow.color, Color.Transparent),
-                                    center = Offset(size.width * glow.x, size.height * glow.y),
-                                    radius = size.width * glow.radius
-                                )
-                            )
-                        }
-                    }
+        if (image != null) {
+            Image(
+                image,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.Low,
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
 }
+
+/**
+ * Paints a glow style once into a small 16:9 bitmap. Smooth gradients lose nothing when the
+ * screen scales it up, and drawing it costs a single texture pass.
+ */
+private fun bakeWallpaper(style: String): ImageBitmap? {
+    val (base, glows) = WallpaperStyles[style] ?: return null
+    val bitmap = ImageBitmap(WALLPAPER_WIDTH, WALLPAPER_HEIGHT)
+    val size = Size(WALLPAPER_WIDTH.toFloat(), WALLPAPER_HEIGHT.toFloat())
+    CanvasDrawScope().draw(Density(1f), LayoutDirection.Ltr, Canvas(bitmap), size) {
+        drawRect(base)
+        glows.forEach { glow ->
+            drawRect(
+                Brush.radialGradient(
+                    listOf(glow.color, Color.Transparent),
+                    center = Offset(size.width * glow.x, size.height * glow.y),
+                    radius = size.width * glow.radius
+                )
+            )
+        }
+    }
+    return bitmap
+}
+
+private const val WALLPAPER_WIDTH = 640
+private const val WALLPAPER_HEIGHT = 360
 
 // --- Helpers ---
 

@@ -322,9 +322,9 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun wallpaperFile() = java.io.File(filesDir, "wallpaper.jpg")
 
-    /** Copies the chosen image, scaled down to the screen, into app storage. */
+    /** Copies the chosen image, scaled down to Full HD, into app storage. */
     private fun importWallpaper(uri: Uri) {
-        val target = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels).coerceAtLeast(1280)
+        val target = WALLPAPER_MAX_PX
         io.execute {
             val bitmap = runCatching {
                 val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -343,7 +343,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
                 } else {
                     store.wallpaper = LauncherStore.WALLPAPER_PHOTO
                     home.wallpaper = LauncherStore.WALLPAPER_PHOTO
-                    home.wallpaperPhoto = bitmap.asImageBitmap()
+                    home.wallpaperPhoto = withScrim(bitmap).asImageBitmap()
                 }
             }
         }
@@ -351,9 +351,49 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun loadWallpaperPhoto() {
         io.execute {
-            val bitmap = runCatching { android.graphics.BitmapFactory.decodeFile(wallpaperFile().path) }.getOrNull()
+            val bitmap = runCatching {
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(wallpaperFile().path, bounds)
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= WALLPAPER_MAX_PX) sample *= 2
+                val photo = android.graphics.BitmapFactory.decodeFile(
+                    wallpaperFile().path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                )
+                photo?.let { withScrim(it) }
+            }.getOrNull()
             runOnUiThread { home.wallpaperPhoto = bitmap?.asImageBitmap() }
         }
+    }
+
+    /**
+     * Crops the photo to 16:9 at Full HD and darkens it, more at the top and bottom where the
+     * navigation and rows sit, so text keeps the contrast TV guidelines ask for. Done once
+     * here: drawing the scrim on top every frame costs too much at 4K.
+     */
+    private fun withScrim(photo: Bitmap): Bitmap {
+        val width = WALLPAPER_MAX_PX
+        val height = WALLPAPER_MAX_PX * 9 / 16
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val scale = maxOf(width.toFloat() / photo.width, height.toFloat() / photo.height)
+        val drawnWidth = photo.width * scale
+        val drawnHeight = photo.height * scale
+        val left = (width - drawnWidth) / 2
+        val top = (height - drawnHeight) / 2
+        canvas.drawBitmap(
+            photo, null, android.graphics.RectF(left, top, left + drawnWidth, top + drawnHeight),
+            android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+        )
+        val scrim = android.graphics.Paint().apply {
+            shader = android.graphics.LinearGradient(
+                0f, 0f, 0f, height.toFloat(),
+                intArrayOf(0xB3000000.toInt(), 0x73000000, 0xCC000000.toInt()),
+                floatArrayOf(0f, 0.45f, 1f),
+                android.graphics.Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), scrim)
+        return out
     }
 
     override fun dismissVoice() {
@@ -1324,9 +1364,11 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
                 val apk = updates.download(update) { percent ->
                     runOnUiThread { status.text = getString(R.string.update_downloading, update.versionName, percent) }
                 }
+                // Optional: without it the update still installs, only uncompiled
+                val profile = runCatching { updates.downloadProfile(update) }.getOrNull()
                 runOnUiThread { status.text = getString(R.string.update_installing) }
                 // The system asks for confirmation; UpdatedReceiver reopens the new version
-                updates.install(apk, update.pkg)
+                updates.install(apk, update.pkg, profile)
                 null
             } catch (e: Exception) {
                 e.message ?: e.javaClass.simpleName
@@ -1355,6 +1397,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         private const val YOUTUBE_TV_APP = "com.google.android.youtube.tv"
         private const val MAX_LISTEN_MS = 15_000L
         private const val VIDEO_REFRESH_MS = 20 * 60 * 1000L
+        /** Wallpaper photos are kept at Full HD; the screen scales them to 4K. */
+        private const val WALLPAPER_MAX_PX = 1920
         /** Long enough for the Bluetooth link to come back after the web player closes. */
         private const val MIC_OPEN_TIMEOUT_MS = 10_000L
         /** How long a mic key waits for the remote's own Bluetooth request before acting. */

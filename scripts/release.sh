@@ -46,24 +46,39 @@ if ! "$BUILD_TOOLS/apksigner" verify --print-certs "$apk" | grep -q "CN=Chromebo
   exit 1
 fi
 
-python3 - "$apk" "$name" "$code" "https://github.com/$REPO/releases/download/$tag/$apk_name" "$out/updates.json" <<'PY'
-import hashlib, json, os, sys
-apk, name, code, url, out = sys.argv[1:]
+# Compile profiles (dex metadata) for each Android range ship with the APK, so updates
+# install compiled (see UpdateManager)
+python3 - "$apk" "$name" "$code" "https://github.com/$REPO/releases/download/$tag" "$out" <<'PY'
+import hashlib, json, os, shutil, sys
+apk, name, code, base_url, out = sys.argv[1:]
+sha = lambda path: hashlib.sha256(open(path, "rb").read()).hexdigest()
+built = "app/build/outputs/apk/release"
+meta = json.load(open(os.path.join(built, "output-metadata.json")))
+profiles = []
+for group in meta.get("baselineProfiles", []):
+    for dm in group["baselineProfiles"]:
+        file_name = "Chromebox-TV-%s-api%d.dm" % (name, group["minApi"])
+        shutil.copy(os.path.join(built, dm), os.path.join(out, file_name))
+        profile = {"minSdk": group["minApi"], "url": "%s/%s" % (base_url, file_name), "sha256": sha(os.path.join(out, file_name))}
+        if group["maxApi"] < 2**31 - 1:
+            profile["maxSdk"] = group["maxApi"]
+        profiles.append(profile)
 entry = {
     "package": "local.chromebox.tvlauncher",
     "name": "Chromebox TV",
     "versionCode": int(code),
     "versionName": name,
-    "apk": url,
-    "sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+    "apk": "%s/%s" % (base_url, os.path.basename(apk)),
+    "sha256": sha(apk),
     "size": os.path.getsize(apk),
+    "profiles": profiles,
 }
-json.dump({"apps": [entry]}, open(out, "w"), ensure_ascii=False, indent=2)
+json.dump({"apps": [entry]}, open(os.path.join(out, "updates.json"), "w"), ensure_ascii=False, indent=2)
 PY
 
 git add version.properties
 git commit -q -m "Release $name" ${RELEASE_COMMIT_TRAILER:+-m "$RELEASE_COMMIT_TRAILER"}
 git tag "$tag"
 git push -q origin HEAD "$tag"
-gh release create "$tag" "$apk" "$out/updates.json" --repo "$REPO" --title "Chromebox TV $name" --notes "$NOTES"
+gh release create "$tag" "$apk" "$out"/*.dm "$out/updates.json" --repo "$REPO" --title "Chromebox TV $name" --notes "$NOTES"
 echo "Released Chromebox TV $name"

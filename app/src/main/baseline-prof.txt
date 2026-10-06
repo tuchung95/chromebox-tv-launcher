@@ -1,0 +1,10 @@
+# Compiled ahead of time when the launcher is installed together with its profile (.dm, see
+# scripts/release.sh and UpdateManager). Without it the Chromebox's Celeron runs the home
+# screen interpreted until Android compiles the app in an idle moment, which seldom comes on
+# ChromeOS, and moving between cards stutters.
+HSPLlocal/chromebox/tvlauncher/**;->**(**)**
+HSPLandroidx/tv/material3/**;->**(**)**
+HSPLandroidx/compose/foundation/**;->**(**)**
+HSPLandroidx/compose/ui/**;->**(**)**
+HSPLandroidx/compose/runtime/**;->**(**)**
+HSPLandroidx/compose/animation/**;->**(**)**
