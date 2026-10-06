@@ -24,6 +24,9 @@ data class FeedVideo(
 ) {
     /** 320 × 180, the 16:9 size that fits a card. */
     val thumbnail get() = "https://i.ytimg.com/vi/$id/mqdefault.jpg"
+
+    /** 1280 × 720 for the featured carousel; missing for some older videos. */
+    val backdrop get() = "https://i.ytimg.com/vi/$id/maxresdefault.jpg"
 }
 
 /**

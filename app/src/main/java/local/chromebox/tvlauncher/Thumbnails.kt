@@ -18,19 +18,29 @@ import java.net.URL
 /** Video thumbnails, downloaded once and kept in memory and in the app's cache folder. */
 object Thumbnails {
 
-    private val memory = LruCache<String, ImageBitmap>(MAX_IN_MEMORY)
+    // Sized in bytes: carousel pictures are sixteen times larger than card thumbnails
+    private val memory = object : LruCache<String, ImageBitmap>(MAX_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+    }
+
+    /** Pictures the server doesn't have, such as the large one of an older video; not asked for again. */
+    private val missing = java.util.Collections.synchronizedSet(HashSet<String>())
 
     fun cached(url: String): ImageBitmap? = memory.get(url)
 
     /** Blocks; null when the image can't be fetched or decoded. */
     fun load(context: Context, url: String): ImageBitmap? {
         memory.get(url)?.let { return it }
+        if (url in missing) return null
         val file = File(folder(context), fileName(url))
         val bytes = if (file.exists()) {
             runCatching { file.readBytes() }.getOrNull()
         } else {
             runCatching { download(url) }.getOrNull()?.also { runCatching { file.writeBytes(it) } }
-        } ?: return null
+        } ?: run {
+            missing.add(url)
+            return null
+        }
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
         return bitmap.asImageBitmap().also { memory.put(url, it) }
     }
@@ -58,15 +68,19 @@ object Thumbnails {
         }
     }
 
-    private const val MAX_IN_MEMORY = 120
+    private const val MAX_BYTES = 64 * 1024 * 1024
 }
 
-/** The thumbnail at [url], or null until it has loaded. */
+/** The picture at [url], or at [fallback] when that one doesn't exist; null until loaded. */
 @Composable
-fun rememberThumbnail(url: String): ImageBitmap? {
+fun rememberThumbnail(url: String, fallback: String? = null): ImageBitmap? {
     val context = LocalContext.current.applicationContext
-    val image by produceState(Thumbnails.cached(url), url) {
-        if (value == null) value = withContext(Dispatchers.IO) { Thumbnails.load(context, url) }
+    val image by produceState(Thumbnails.cached(url) ?: fallback?.let { Thumbnails.cached(it) }, url, fallback) {
+        if (value == null) {
+            value = withContext(Dispatchers.IO) {
+                Thumbnails.load(context, url) ?: fallback?.let { Thumbnails.load(context, it) }
+            }
+        }
     }
     return image
 }

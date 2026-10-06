@@ -23,6 +23,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -180,7 +181,13 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         if (hasFocus && store.fullscreen) applyFullscreen(true)
     }
 
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_HOVER_MOVE) PointerActivity.moved()
+        return super.dispatchGenericMotionEvent(event)
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) PointerActivity.keyPressed()
         val code = event.keyCode
         buttons[code]?.let { action ->
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) runButtonAction(action)
@@ -903,7 +910,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             // Offline: keep what is shown
             if (feeds.all { it == null }) return@execute
             val videos = YouTubeFeed.latest(feeds.filterNotNull().map { it.videos })
-            runCatching { Thumbnails.prune(this, videos.map { it.thumbnail }) }
+            runCatching { Thumbnails.prune(this, videos.flatMap { listOf(it.thumbnail, it.backdrop) }) }
             runOnUiThread {
                 home.videos = videos
                 store.cacheVideos(videos)

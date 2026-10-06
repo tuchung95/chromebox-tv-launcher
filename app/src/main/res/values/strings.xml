@@ -11,6 +11,7 @@
 
     <!-- Featured carousel -->
     <string name="hero_open">Mở ngay</string>
+    <string name="hero_watch">Xem ngay</string>
     <string name="hero_app">Ứng dụng yêu thích</string>
     <string name="hero_youtube_tv">YouTube giao diện TV, điều khiển bằng remote</string>
     <string name="hero_launcher">Xem ngay trong launcher · %1$s</string>

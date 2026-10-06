@@ -213,6 +213,8 @@ private val CardGap = 20.dp
 private val FeatureCardWidth = 268.dp // three cards per row
 private val AppCardWidth = 196.dp // four cards per row
 private val HeroHeight = 290.dp
+/** How many new videos lead the featured carousel. */
+private const val HERO_VIDEOS = 4
 
 private object Palette {
     val Background = Color(0xFF121418)
@@ -248,9 +250,14 @@ fun ChromeboxTvTheme(content: @Composable () -> Unit) {
     )
 }
 
-/** A web page or a favorite app shown in the featured carousel. */
+/** A new video, a web page or a favorite app shown in the featured carousel. */
 private sealed interface Featured {
     val key: String
+
+    /** As on Google TV, the carousel opens with large pictures of new videos to watch. */
+    data class Video(val video: FeedVideo) : Featured {
+        override val key get() = "video:" + video.id
+    }
 
     data class Web(val shortcut: WebShortcut) : Featured {
         override val key get() = "web:" + shortcut.id
@@ -413,8 +420,10 @@ private fun Clock() {
 
 @Composable
 private fun HomeTabContent(state: HomeState, actions: HomeActions, listState: androidx.compose.foundation.lazy.LazyListState, contentStart: FocusRequester) {
-    val featured = remember(state.web, state.favorites) {
-        (state.web.map { Featured.Web(it) } + state.favorites.map { Featured.App(it) }).take(6)
+    val featured = remember(state.web, state.favorites, state.videos) {
+        (state.videos.take(HERO_VIDEOS).map { Featured.Video(it) } +
+            state.web.map { Featured.Web(it) } +
+            state.favorites.map { Featured.App(it) }).take(HERO_VIDEOS + 3)
     }
     LazyColumn(
         state = listState,
@@ -513,6 +522,7 @@ private fun Hero(items: List<Featured>, actions: HomeActions, focusRequester: Fo
 }
 
 private fun open(item: Featured, actions: HomeActions) = when (item) {
+    is Featured.Video -> actions.openVideo(item.video)
     is Featured.Web -> actions.openWeb(item.shortcut)
     is Featured.App -> actions.launchApp(item.app.pkg)
 }
@@ -520,10 +530,12 @@ private fun open(item: Featured, actions: HomeActions) = when (item) {
 @Composable
 private fun HeroSlide(item: Featured, carouselFocused: Boolean) {
     val title = when (item) {
+        is Featured.Video -> item.video.title
         is Featured.Web -> item.shortcut.title
         is Featured.App -> item.app.label
     }
     val description = when (item) {
+        is Featured.Video -> listOf(item.video.channel, ageText(item.video.published)).filter { it.isNotEmpty() }.joinToString(" · ")
         is Featured.App -> stringResource(R.string.hero_app)
         is Featured.Web -> {
             val host = MainActivity.hostOf(item.shortcut.url)
@@ -537,11 +549,19 @@ private fun HeroSlide(item: Featured, carouselFocused: Boolean) {
     }
     Box(Modifier.fillMaxSize()) {
         HeroArt(item)
-        // Darkens the left side so the text stays readable over any artwork
+        // Darkens the left side so the text stays readable over any artwork, more so over
+        // video pictures, which are often bright
+        val shade = if (item is Featured.Video) 0.85f else 0.7f
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.7f), 0.65f to Color.Transparent))
+                .background(
+                    Brush.horizontalGradient(
+                        0f to Color.Black.copy(alpha = shade),
+                        0.45f to Color.Black.copy(alpha = shade * 0.7f),
+                        0.75f to Color.Transparent
+                    )
+                )
         )
         Column(
             Modifier
@@ -549,11 +569,13 @@ private fun HeroSlide(item: Featured, carouselFocused: Boolean) {
                 .fillMaxWidth(0.6f)
                 .padding(start = 32.dp, bottom = 28.dp)
         ) {
+            // Video titles run long: two smaller lines instead of one large one
+            val isVideo = item is Featured.Video
             Text(
                 title,
-                style = MaterialTheme.typography.displaySmall,
+                style = if (isVideo) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall,
                 color = Palette.Text,
-                maxLines = 1,
+                maxLines = if (isVideo) 2 else 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
@@ -575,7 +597,11 @@ private fun HeroSlide(item: Featured, carouselFocused: Boolean) {
             ) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = labelColor, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.hero_open), style = MaterialTheme.typography.labelLarge, color = labelColor)
+                Text(
+                    stringResource(if (item is Featured.Video) R.string.hero_watch else R.string.hero_open),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = labelColor
+                )
             }
         }
     }
@@ -584,6 +610,7 @@ private fun HeroSlide(item: Featured, carouselFocused: Boolean) {
 @Composable
 private fun HeroArt(item: Featured) {
     val base = when (item) {
+        is Featured.Video -> Palette.Card
         is Featured.Web -> webColor(item.shortcut.url)
         is Featured.App -> Palette.App
     }
@@ -593,6 +620,13 @@ private fun HeroArt(item: Featured) {
             .background(Brush.linearGradient(listOf(lerp(base, Color.Black, 0.55f), base, lerp(base, Color.White, 0.12f))))
     ) {
         when (item) {
+            is Featured.Video -> {
+                // The large 1280 x 720 picture; older videos only have the smaller one
+                val picture = rememberThumbnail(item.video.backdrop, fallback = item.video.thumbnail)
+                if (picture != null) {
+                    Image(picture, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+            }
             is Featured.App -> {
                 val banner = item.app.banner
                 if (banner != null) {
@@ -1254,6 +1288,27 @@ private const val WALLPAPER_HEIGHT = 360
 private fun webColor(url: String): Color =
     Palette.Web[Math.floorMod(MainActivity.hostOf(url).hashCode(), Palette.Web.size)]
 
+/**
+ * When the viewer last really moved the mouse. Compose also reports the pointer entering an
+ * element when a new tab's content appears under a resting pointer; on ChromeOS the pointer
+ * always rests somewhere, so those reports pulled focus off the tab bar while switching tabs
+ * with the remote. Only real movement counts, and any key press cancels it.
+ */
+object PointerActivity {
+    @Volatile
+    private var lastMove = 0L
+
+    fun moved() {
+        lastMove = android.os.SystemClock.uptimeMillis()
+    }
+
+    fun keyPressed() {
+        lastMove = 0L
+    }
+
+    val recentlyMoved get() = android.os.SystemClock.uptimeMillis() - lastMove < 500
+}
+
 /** Moves focus to the element under the mouse pointer, so mouse and remote share one highlight. */
 @Composable
 private fun Modifier.focusOnHover(): Modifier {
@@ -1263,7 +1318,10 @@ private fun Modifier.focusOnHover(): Modifier {
         .pointerInput(Unit) {
             awaitPointerEventScope {
                 while (true) {
-                    if (awaitPointerEvent().type == PointerEventType.Enter) runCatching { requester.requestFocus() }
+                    val event = awaitPointerEvent()
+                    if (event.type == PointerEventType.Enter && PointerActivity.recentlyMoved) {
+                        runCatching { requester.requestFocus() }
+                    }
                 }
             }
         }
