@@ -15,6 +15,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.util.Log
 import java.util.UUID
 
@@ -53,8 +54,8 @@ class AtvvRemote(
 
     /** Steps of the Bluetooth link, kept for the remote dialog so problems can be traced. */
     enum class Event {
-        NOT_FOUND, FOUND, CONNECTED, DISCONNECTED, MTU, SERVICES, NO_VOICE_SERVICE, NOTIFY, CAPS_SENT, READY,
-        STALLED, CONTROL, WRITE_FAILED, MIC_BUTTON, MIC_OPEN, AUDIO_START, AUDIO_STOP, MIC_ERROR
+        NOT_FOUND, FOUND, CONNECTED, DISCONNECTED, MTU, SERVICES, NO_VOICE_SERVICE, NOTIFY, CAPS_SENT, READY, MODEL,
+        STALLED, TIMEOUT, OP_ERROR, BLOCKED, CONTROL, WRITE_FAILED, MIC_BUTTON, MIC_OPEN, AUDIO_START, AUDIO_STOP, MIC_ERROR
     }
 
     class LogEntry(val time: Long, val event: Event, val detail: String)
@@ -64,22 +65,36 @@ class AtvvRemote(
     private val bluetooth = context.getSystemService(BluetoothManager::class.java)
 
     private var running = false
-    private var gatt: BluetoothGatt? = null
+    @Volatile private var gatt: BluetoothGatt? = null
     private var deviceName: String? = null
     private var tx: BluetoothGattCharacteristic? = null
     private var discoveryStarted = false
     private var retryCount = 0
 
     // Set-up after connecting: which step is running, and timers for steps that never finish
-    private var step = ""
+    @Volatile private var step = ""
     private var legacyCapsTried = false
     private val setupWatchdog = Runnable { onSetupStalled() }
     private val capsTimeout = Runnable { onCapsTimeout() }
 
     // Serialized GATT operations: Android allows only one outstanding request at a time
-    private val operations = ArrayDeque<() -> Boolean>()
+    private val operations = ArrayDeque<Pair<String, () -> Boolean>>()
     private var operationBusy = false
-    private val operationTimeout = Runnable { operationBusy = false; nextOperation() }
+    @Volatile private var currentOperation = ""
+    private val operationTimeout = Runnable {
+        record(Event.TIMEOUT, currentOperation)
+        operationBusy = false
+        nextOperation()
+    }
+
+    /**
+     * Runs on the main thread, so it still fires when a Bluetooth call never returns and
+     * blocks the worker thread, which would stop the worker's own timers too.
+     */
+    private val main = Handler(Looper.getMainLooper())
+    private val blockedCheck = Runnable {
+        if (!ready && gatt != null) record(Event.BLOCKED, "$currentOperation · $step")
+    }
 
     // Negotiated audio parameters
     private var version = 0x0100
@@ -88,7 +103,7 @@ class AtvvRemote(
     private var session: Byte = 0
 
     // Stream state
-    private var ready = false
+    @Volatile private var ready = false
     private var micWanted = false
     private var micRequested = false
     private var streaming = false
@@ -105,7 +120,12 @@ class AtvvRemote(
         connect()
     }
 
-    fun stop() = worker.post {
+    fun stop() {
+        main.removeCallbacks(blockedCheck)
+        worker.post { stopNow() }
+    }
+
+    private fun stopNow() {
         running = false
         micWanted = false
         worker.removeCallbacksAndMessages(null)
@@ -129,7 +149,7 @@ class AtvvRemote(
     /** Ends the current voice session, for example once speech has been recognized. */
     fun closeMicrophone() = worker.post {
         micWanted = false
-        if (micRequested || streaming) enqueue { writeTx(micCloseCommand()) }
+        if (micRequested || streaming) enqueue("mic close") { writeTx(micCloseCommand()) }
         endStream()
     }
 
@@ -210,6 +230,7 @@ class AtvvRemote(
     private fun teardown() {
         ready = false
         step = ""
+        main.removeCallbacks(blockedCheck)
         worker.removeCallbacks(setupWatchdog)
         worker.removeCallbacks(capsTimeout)
         endStream()
@@ -248,10 +269,11 @@ class AtvvRemote(
 
     private fun sendCapabilitiesRequest(command: ByteArray, label: String): Boolean {
         step = "caps"
-        val sent = writeTx(command)
-        record(Event.CAPS_SENT, if (sent) label else "$label · write = false")
+        // Armed first, so the fallback still runs if the write throws
         worker.removeCallbacks(capsTimeout)
         worker.postDelayed(capsTimeout, CAPS_TIMEOUT_MS)
+        val sent = writeTx(command)
+        record(Event.CAPS_SENT, if (sent) label else "$label · write = false")
         return sent
     }
 
@@ -264,11 +286,12 @@ class AtvvRemote(
         if (ready || gatt == null) return
         if (!legacyCapsTried) {
             legacyCapsTried = true
-            enqueue { sendCapabilitiesRequest(GET_CAPABILITIES_V04, "0.4") }
+            enqueue("caps 0.4") { sendCapabilitiesRequest(GET_CAPABILITIES_V04, "0.4") }
             return
         }
         record(Event.STALLED, "caps")
         worker.removeCallbacks(setupWatchdog)
+        main.removeCallbacks(blockedCheck)
         ready = true
         report(State.READY)
         if (micWanted) sendMicOpen()
@@ -288,14 +311,15 @@ class AtvvRemote(
         operations.clear()
         operationBusy = false
         step = "notify"
-        g.getService(DEVICE_INFORMATION)?.getCharacteristic(MODEL_NUMBER)?.let { model ->
-            enqueue { g.readCharacteristic(model) }
-        }
-        enqueue { enableNotifications(g, control) }
-        enqueue { enableNotifications(g, audio) }
-        enqueue {
+        enqueue("notify control") { enableNotifications(g, control) }
+        enqueue("notify audio") { enableNotifications(g, audio) }
+        enqueue("caps 1.0") {
             legacyCapsTried = false
             sendCapabilitiesRequest(GET_CAPABILITIES, "1.0")
+        }
+        // The model only matters once audio arrives, so it is read last
+        g.getService(DEVICE_INFORMATION)?.getCharacteristic(MODEL_NUMBER)?.let { model ->
+            enqueue("model") { g.readCharacteristic(model) }
         }
     }
 
@@ -350,20 +374,28 @@ class AtvvRemote(
 
     private fun hex(bytes: ByteArray) = bytes.take(12).joinToString(" ") { "%02x".format(it) }
 
-    private fun enqueue(operation: () -> Boolean) {
-        operations.addLast(operation)
+    private fun enqueue(name: String, operation: () -> Boolean) {
+        operations.addLast(name to operation)
         if (!operationBusy) nextOperation()
     }
 
     private fun nextOperation() {
         while (operations.isNotEmpty()) {
-            val operation = operations.removeFirst()
-            if (runCatching(operation).getOrDefault(false)) {
+            val (name, operation) = operations.removeFirst()
+            currentOperation = name
+            val started = try {
+                operation()
+            } catch (e: Exception) {
+                record(Event.OP_ERROR, "$name · ${e.javaClass.simpleName} ${e.message.orEmpty().take(80)}")
+                false
+            }
+            if (started) {
                 operationBusy = true
                 worker.postDelayed(operationTimeout, OPERATION_TIMEOUT_MS)
                 return
             }
         }
+        currentOperation = ""
         operationBusy = false
     }
 
@@ -387,6 +419,7 @@ class AtvvRemote(
             OP_CAPABILITIES -> {
                 worker.removeCallbacks(capsTimeout)
                 worker.removeCallbacks(setupWatchdog)
+                main.removeCallbacks(blockedCheck)
                 parseCapabilities(bytes)
                 retryCount = 0
                 ready = true
@@ -429,7 +462,7 @@ class AtvvRemote(
         micRequested = true
         record(Event.MIC_OPEN)
         listener.onMicRequested()
-        enqueue { writeTx(micOpenCommand()) }
+        enqueue("mic open") { writeTx(micOpenCommand()) }
     }
 
     private fun parseCapabilities(bytes: ByteArray) {
@@ -517,6 +550,8 @@ class AtvvRemote(
                     step = "mtu"
                     worker.removeCallbacks(setupWatchdog)
                     worker.postDelayed(setupWatchdog, SETUP_TIMEOUT_MS)
+                    main.removeCallbacks(blockedCheck)
+                    main.postDelayed(blockedCheck, BLOCKED_CHECK_MS)
                     // A larger MTU carries whole audio frames per notification
                     if (!g.requestMtu(REQUESTED_MTU)) discoverServices(g)
                     else worker.postDelayed({ discoverServices(g) }, MTU_FALLBACK_MS)
@@ -562,36 +597,49 @@ class AtvvRemote(
             }
         }
 
-        @Deprecated("Still the only callback on Android 12 and older")
-        override fun onCharacteristicRead(
-            g: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            status: Int
-        ) {
-            @Suppress("DEPRECATION")
-            val value = characteristic.value?.copyOf()
-            worker.post {
-                if (characteristic.uuid == MODEL_NUMBER && value != null) {
-                    val model = String(value, Charsets.UTF_8).trim().uppercase()
-                    // Old ARN9 firmware packs ADPCM low nibble first
-                    decoder.lowNibbleFirst = model.contains("ARN9")
-                    Log.i(TAG, "remote model $model")
-                }
-                operationDone()
-            }
+        // Android 13 passes the value; older versions keep it on the characteristic
+
+        override fun onCharacteristicRead(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+            onRead(characteristic.uuid, value.copyOf(), status)
         }
 
-        @Deprecated("Still the only callback on Android 12 and older")
+        @Deprecated("The only callback on Android 12 and older")
+        override fun onCharacteristicRead(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            @Suppress("DEPRECATION")
+            onRead(characteristic.uuid, characteristic.value?.copyOf(), status)
+        }
+
+        override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
+            onChanged(characteristic.uuid, value.copyOf())
+        }
+
+        @Deprecated("The only callback on Android 12 and older")
         override fun onCharacteristicChanged(g: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             @Suppress("DEPRECATION")
-            val value = characteristic.value?.copyOf() ?: return
-            val uuid = characteristic.uuid
+            onChanged(characteristic.uuid, characteristic.value?.copyOf() ?: return)
+        }
+
+        private fun onRead(uuid: UUID, value: ByteArray?, status: Int) {
+            worker.post { readDone(uuid, value, status) }
+        }
+
+        private fun onChanged(uuid: UUID, value: ByteArray) {
             worker.post {
                 when (uuid) {
                     CONTROL -> onControl(value)
                     AUDIO -> onAudio(value)
                 }
             }
+        }
+
+        private fun readDone(uuid: UUID, value: ByteArray?, status: Int) {
+            if (uuid == MODEL_NUMBER) {
+                val model = value?.let { String(it, Charsets.UTF_8).trim().uppercase() }.orEmpty()
+                record(Event.MODEL, "$model · status $status")
+                // Old ARN9 firmware packs ADPCM low nibble first
+                decoder.lowNibbleFirst = model.contains("ARN9")
+            }
+            operationDone()
         }
     }
 
@@ -613,6 +661,7 @@ class AtvvRemote(
         private const val BASE_UUID_SUFFIX = "-0000-1000-8000-00805f9b34fb"
         private const val SETUP_TIMEOUT_MS = 20_000L
         private const val CAPS_TIMEOUT_MS = 4_000L
+        private const val BLOCKED_CHECK_MS = 30_000L
 
         private const val OP_AUDIO_STOP = 0x00
         private const val OP_AUDIO_START = 0x04

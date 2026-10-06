@@ -116,6 +116,10 @@
     <string name="remote_event_notify">Bật thông báo: %1$s</string>
     <string name="remote_event_caps_sent">Hỏi thông số giọng nói (%1$s)</string>
     <string name="remote_event_ready">Sẵn sàng, giao thức giọng nói %1$s</string>
+    <string name="remote_event_model">Model: %1$s</string>
+    <string name="remote_event_timeout">Thao tác Bluetooth không phản hồi sau 3 giây: %1$s</string>
+    <string name="remote_event_op_error">Lỗi thao tác Bluetooth: %1$s</string>
+    <string name="remote_event_blocked">Bluetooth bị treo ở: %1$s</string>
     <string name="remote_event_no_caps">Remote không trả lời thông số giọng nói; vẫn thử mở micro</string>
     <string name="remote_event_stalled">Remote không trả lời ở bước %1$s, kết nối lại</string>
     <string name="remote_event_control">Remote gửi: %1$s</string>

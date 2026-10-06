@@ -724,27 +724,43 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             requestBluetoothPermission()
             return
         }
-        val status = getString(remoteStatusText()) + (remoteName?.let { " · $it" } ?: "")
-        // What the Bluetooth link went through, so a screenshot shows where it stops
+        val dialog = AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.remote_title)
+            .setMessage(remoteDetails())
+            // The label and action follow the state at the moment of the click
+            .setPositiveButton(R.string.remote_reconnect) { _, _ ->
+                if (remoteState == AtvvRemote.State.READY) startVoice() else remote.restart()
+            }
+            .setNeutralButton(R.string.remote_choose) { _, _ -> chooseRemote() }
+            .setNegativeButton(R.string.close, null)
+            .create()
+        // Redraws every second while open, so the log shows the link as it progresses
+        val refresh = object : Runnable {
+            override fun run() {
+                if (!dialog.isShowing) return
+                dialog.setMessage(remoteDetails())
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setText(
+                    if (remoteState == AtvvRemote.State.READY) R.string.remote_test_mic else R.string.remote_reconnect
+                )
+                main.postDelayed(this, 1000)
+            }
+        }
+        dialog.setOnShowListener { refresh.run() }
+        dialog.setOnDismissListener { main.removeCallbacks(refresh) }
+        dialog.show()
+    }
+
+    /** Status, the Bluetooth link's recent steps, then help; a screenshot shows where it stops. */
+    private fun remoteDetails(): String {
         val clock = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
-        val details = buildString {
-            append(status)
+        return buildString {
+            append(getString(remoteStatusText())).append(remoteName?.let { " · $it" } ?: "")
             append("\n\n").append(getString(R.string.remote_details, Build.VERSION.RELEASE, remote.knownDevices().size))
             remote.recentEvents().forEach { entry ->
                 append('\n').append(clock.format(Date(entry.time))).append("  ").append(eventText(entry))
             }
             append("\n\n").append(getString(R.string.remote_help))
         }
-        val ready = remoteState == AtvvRemote.State.READY
-        AlertDialog.Builder(this, DIALOG_THEME)
-            .setTitle(R.string.remote_title)
-            .setMessage(details)
-            .setPositiveButton(if (ready) R.string.remote_test_mic else R.string.remote_reconnect) { _, _ ->
-                if (ready) startVoice() else remote.restart()
-            }
-            .setNeutralButton(R.string.remote_choose) { _, _ -> chooseRemote() }
-            .setNegativeButton(R.string.close, null)
-            .show()
     }
 
     private fun eventText(entry: AtvvRemote.LogEntry): String {
@@ -760,6 +776,10 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             AtvvRemote.Event.NOTIFY -> getString(R.string.remote_event_notify, detail)
             AtvvRemote.Event.CAPS_SENT -> getString(R.string.remote_event_caps_sent, detail)
             AtvvRemote.Event.READY -> getString(R.string.remote_event_ready, detail)
+            AtvvRemote.Event.MODEL -> getString(R.string.remote_event_model, detail)
+            AtvvRemote.Event.TIMEOUT -> getString(R.string.remote_event_timeout, detail)
+            AtvvRemote.Event.OP_ERROR -> getString(R.string.remote_event_op_error, detail)
+            AtvvRemote.Event.BLOCKED -> getString(R.string.remote_event_blocked, detail)
             AtvvRemote.Event.STALLED ->
                 if (detail == "caps") getString(R.string.remote_event_no_caps) else getString(R.string.remote_event_stalled, detail)
             AtvvRemote.Event.CONTROL -> getString(R.string.remote_event_control, detail)
