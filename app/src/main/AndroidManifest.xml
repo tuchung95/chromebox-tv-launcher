@@ -36,12 +36,6 @@
         </intent>
         <package android:name="local.chromebox.browser4k" />
         <package android:name="com.google.android.youtube.tv" />
-        <!-- SmartTube, used for YouTube when installed -->
-        <package android:name="org.smarttube.stable" />
-        <package android:name="org.smarttube.beta" />
-        <package android:name="com.teamsmart.videomanager.tv" />
-        <package android:name="com.liskovsoft.smarttubetv.beta" />
-        <package android:name="com.liskovsoft.smarttubetv" />
     </queries>
 
     <application

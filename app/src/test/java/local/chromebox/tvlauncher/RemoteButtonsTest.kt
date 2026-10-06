@@ -13,11 +13,14 @@ class RemoteButtonsTest {
     fun actionsSurviveSaving() {
         val actions = listOf(
             ButtonAction.Voice, ButtonAction.Home, ButtonAction.AllApps, ButtonAction.Fullscreen, ButtonAction.Ignore,
-            ButtonAction.Search, ButtonAction.SmartTubeSearch,
+            ButtonAction.Search,
             ButtonAction.OpenApp("org.videolan.vlc"), ButtonAction.OpenWeb("1234-abcd")
         )
         actions.forEach { assertEquals(it, ButtonAction.parse(it.value)) }
     }
+
+    @Test
+    fun oldSmartTubeSearchBecomesSearch() = assertEquals(ButtonAction.Search, ButtonAction.parse("smarttube_search"))
 
     @Test
     fun unknownValuesAreDropped() {

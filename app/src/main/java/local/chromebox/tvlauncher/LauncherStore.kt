@@ -52,7 +52,8 @@ class LauncherStore(context: Context) {
                     id = o.getString("id"),
                     title = o.getString("title"),
                     url = o.getString("url"),
-                    opener = o.optString("opener", OPENER_CHROME),
+                    // Versions 1.0.10 to 1.0.16 could open YouTube in SmartTube
+                    opener = o.optString("opener", OPENER_CHROME).let { if (it == RETIRED_OPENER_SMARTTUBE) OPENER_YOUTUBE_TV else it },
                     search = o.optString("search", "")
                 )
             }
@@ -76,20 +77,6 @@ class LauncherStore(context: Context) {
                 if (host.endsWith("youtube.com") && shortcut.opener == OPENER_LAUNCHER) {
                     list[i] = shortcut.copy(url = YOUTUBE_TV_URL, opener = OPENER_YOUTUBE_TV, search = YOUTUBE_TV_SEARCH)
                 }
-            }
-        }
-    }
-
-    /**
-     * Once SmartTube is installed, the YouTube pages that open YouTube's TV interface switch to
-     * it, a single time; the card menu can switch a page back.
-     */
-    fun preferSmartTube() {
-        if (prefs.getBoolean(KEY_SMARTTUBE_SWITCHED, false)) return
-        prefs.edit().putBoolean(KEY_SMARTTUBE_SWITCHED, true).apply()
-        updateWeb { list ->
-            for (i in list.indices) {
-                if (list[i].opener == OPENER_YOUTUBE_TV) list[i] = list[i].copy(opener = OPENER_SMARTTUBE)
             }
         }
     }
@@ -262,11 +249,10 @@ class LauncherStore(context: Context) {
         const val OPENER_LAUNCHER = "launcher"
         /** YouTube's TV interface, driven by the remote, in the launcher's web player. */
         const val OPENER_YOUTUBE_TV = "youtube_tv"
-        /** The SmartTube app, falling back to YouTube's TV interface when it is not installed. */
-        const val OPENER_SMARTTUBE = "smarttube"
         const val OPENER_BROWSER4K = "browser4k"
         const val OPENER_CHROME = "chrome"
-        val OPENERS = listOf(OPENER_LAUNCHER, OPENER_YOUTUBE_TV, OPENER_SMARTTUBE, OPENER_BROWSER4K, OPENER_CHROME)
+        val OPENERS = listOf(OPENER_LAUNCHER, OPENER_YOUTUBE_TV, OPENER_BROWSER4K, OPENER_CHROME)
+        private const val RETIRED_OPENER_SMARTTUBE = "smarttube"
 
         const val YOUTUBE_TV_URL = "https://www.youtube.com/tv"
         const val YOUTUBE_TV_SEARCH = "https://www.youtube.com/tv#/search?q=%s"
@@ -283,7 +269,6 @@ class LauncherStore(context: Context) {
         private const val KEY_BUTTONS = "remote_buttons"
         private const val KEY_CHANNELS = "youtube_channels"
         private const val KEY_VIDEOS = "youtube_videos"
-        private const val KEY_SMARTTUBE_SWITCHED = "smarttube_switched"
 
         const val WALLPAPER_NONE = "none"
         const val WALLPAPER_AURORA = "aurora"

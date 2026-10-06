@@ -41,7 +41,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENERS
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_BROWSER4K
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_LAUNCHER
-import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_SMARTTUBE
 import local.chromebox.tvlauncher.LauncherStore.Companion.OPENER_YOUTUBE_TV
 import java.io.IOException
 import java.net.URLEncoder
@@ -191,10 +190,10 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) onVoiceKey()
             return true
         }
-        // The Xiaomi remote's mic button arrives as F5 once ChromeOS passes the top-row keys
-        // on as function keys; unless assigned otherwise it opens search
+        // The Xiaomi remote's mic button is F5 when no app uses its voice service. Where the
+        // system passes F5 on (ChromeOS keeps it for its window overview), it opens search
         if (code == KeyEvent.KEYCODE_F5) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) runButtonAction(ButtonAction.SmartTubeSearch)
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) runButtonAction(ButtonAction.Search)
             return true
         }
         if (event.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_F11) {
@@ -230,9 +229,6 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
     private fun refreshHome(force: Boolean = false) {
         val loaded = loadApps()
         store.pinNewlyInstalled(loaded.map { it.pkg }.toSet())
-        val smartTube = SmartTube.PACKAGES.firstOrNull { pkg -> loaded.any { it.pkg == pkg } }
-        if (smartTube != null) store.preferSmartTube()
-        home.smartTube = smartTube
         val signature = loaded.joinToString(",") { it.pkg + "/" + it.label } + "#" + store.signature()
         if (!force && signature == lastSignature) return
         lastSignature = signature
@@ -369,11 +365,6 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun openUrl(url: String, opener: String, query: String? = null) {
         val uri = Uri.parse(url)
-        if (opener == OPENER_SMARTTUBE) {
-            if (openInSmartTube(url, query)) return
-            toast(getString(R.string.smarttube_missing))
-            return openUrl(url, OPENER_YOUTUBE_TV, query)
-        }
         if (opener == OPENER_YOUTUBE_TV) {
             if (openYouTubeTvApp(url, query)) return
             val player = Intent(this, WebPlayerActivity::class.java)
@@ -410,87 +401,13 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
                 .putExtra(SearchManager.QUERY, query)
             if (startInLauncher(search)) return true
         }
-        SmartTube.videoUrl(url)?.let { video ->
+        YouTubeFeed.watchUrl(url)?.let { video ->
             if (startInLauncher(Intent(Intent.ACTION_VIEW, Uri.parse(video)).setPackage(YOUTUBE_TV_APP))) return true
         }
         val launch = packageManager.getLeanbackLaunchIntentForPackage(YOUTUBE_TV_APP)
             ?: packageManager.getLaunchIntentForPackage(YOUTUBE_TV_APP)
             ?: return false
         return startInLauncher(launch)
-    }
-
-    private fun smartTubePackage() = SmartTube.PACKAGES.firstOrNull { isInstalled(it) }
-
-    private fun launchIntentFor(pkg: String) =
-        packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg)
-
-    /** Opens SmartTube with the search for [query], the video in [url], or its home screen. */
-    private fun openInSmartTube(url: String, query: String?): Boolean {
-        val pkg = smartTubePackage() ?: return false
-        val target = if (query != null) SmartTube.searchUrl(encode(query)) else SmartTube.videoUrl(url)
-        val intent = target?.let { Intent(Intent.ACTION_VIEW, Uri.parse(it)).setPackage(pkg) }
-            ?: launchIntentFor(pkg)
-            ?: return false
-        return startInLauncher(intent)
-    }
-
-    override fun openSmartTube(section: SmartTube.Section) {
-        val pkg = smartTubePackage() ?: return toast(getString(R.string.smarttube_not_installed))
-        if (startInLauncher(Intent().setComponent(section.component(pkg)))) return
-        // An older SmartTube may lack the section; open the app instead
-        val launch = launchIntentFor(pkg)
-        if (launch == null || !startInLauncher(launch)) toast(getString(R.string.app_missing))
-    }
-
-    /** SmartTube's search screen when it is installed, else the launcher's Search tab. */
-    private fun openSmartTubeSearch() {
-        val pkg = smartTubePackage()
-        if (pkg != null && startInLauncher(Intent().setComponent(SmartTube.searchComponent(pkg)))) return
-        home.showTab(HomeTab.SEARCH)
-    }
-
-    override fun smartTubeClicked() {
-        if (smartTubePackage() != null) {
-            openSmartTube(SmartTube.Section.HOME)
-            return
-        }
-        AlertDialog.Builder(this, DIALOG_THEME)
-            .setTitle(R.string.smarttube_install_title)
-            .setMessage(R.string.smarttube_install_message)
-            .setPositiveButton(R.string.smarttube_install) { _, _ -> installSmartTube() }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    /** Downloads SmartTube's latest stable APK from its GitHub releases and installs it. */
-    private fun installSmartTube() {
-        if (!updates.canInstall()) return askInstallPermission()
-        val (dialog, status) = progressDialog(R.string.smarttube_install_title)
-        status.text = getString(R.string.smarttube_finding)
-        io.execute {
-            val failure = try {
-                val release = SmartTube.parseRelease(updates.fetchText(SmartTube.LATEST_RELEASE))
-                val asset = SmartTube.pickAsset(release.assets, Build.SUPPORTED_ABIS.toList())
-                    ?: throw IOException(getString(R.string.smarttube_no_apk))
-                val apk = updates.fetchApk(asset.url, asset.sha256, asset.name) { percent ->
-                    runOnUiThread { status.text = getString(R.string.update_downloading, release.version, percent) }
-                }
-                val pkg = updates.packageOf(apk)
-                if (pkg == null || pkg !in SmartTube.PACKAGES) {
-                    apk.delete()
-                    throw IOException(getString(R.string.update_bad_package))
-                }
-                runOnUiThread { status.text = getString(R.string.update_installing) }
-                updates.install(apk, pkg)
-                null
-            } catch (e: Exception) {
-                e.message ?: e.javaClass.simpleName
-            }
-            runOnUiThread {
-                dialog.dismiss()
-                failure?.let { toast(getString(R.string.smarttube_failed, it)) }
-            }
-        }
     }
 
     /** Opens in a separate task, which ChromeOS shows as its own window. */
@@ -536,7 +453,6 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         when (opener) {
             OPENER_LAUNCHER -> R.string.opener_launcher
             OPENER_YOUTUBE_TV -> R.string.opener_youtube_tv
-            OPENER_SMARTTUBE -> R.string.opener_smarttube
             OPENER_BROWSER4K -> R.string.opener_browser4k
             else -> R.string.opener_chrome
         }
@@ -955,12 +871,8 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         }
     }
 
-    /** Plays the video the way the YouTube page on the home screen opens: SmartTube or YouTube's TV interface. */
-    override fun openVideo(video: FeedVideo) {
-        val opener = store.webShortcuts().firstOrNull { it.opener == OPENER_SMARTTUBE || it.opener == OPENER_YOUTUBE_TV }?.opener
-            ?: if (smartTubePackage() != null) OPENER_SMARTTUBE else OPENER_YOUTUBE_TV
-        openUrl(YouTubeFeed.tvWatchUrl(video.id), opener)
-    }
+    /** Plays the video in YouTube's TV app when installed, else in YouTube's TV web interface. */
+    override fun openVideo(video: FeedVideo) = openUrl(YouTubeFeed.tvWatchUrl(video.id), OPENER_YOUTUBE_TV)
 
     override fun videoMenu(video: FeedVideo) {
         showMenu(
@@ -1060,7 +972,6 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             ButtonAction.AllApps -> home.showTab(HomeTab.APPS)
             ButtonAction.Fullscreen -> toggleFullscreen()
             ButtonAction.Search -> home.showTab(HomeTab.SEARCH)
-            ButtonAction.SmartTubeSearch -> openSmartTubeSearch()
             ButtonAction.Ignore -> Unit
             is ButtonAction.OpenApp -> launchApp(action.pkg)
             is ButtonAction.OpenWeb -> {
@@ -1118,7 +1029,6 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
     private fun chooseAction(keyCode: Int) {
         val choices = mutableListOf<Pair<String, () -> Unit>>(
-            getString(R.string.action_smarttube_search) to { assign(keyCode, ButtonAction.SmartTubeSearch) },
             getString(R.string.action_search) to { assign(keyCode, ButtonAction.Search) },
             getString(R.string.action_voice) to { assign(keyCode, ButtonAction.Voice) },
             getString(R.string.action_home) to { assign(keyCode, ButtonAction.Home) },
@@ -1160,7 +1070,6 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         ButtonAction.AllApps -> getString(R.string.action_apps)
         ButtonAction.Fullscreen -> getString(R.string.action_fullscreen)
         ButtonAction.Search -> getString(R.string.action_search)
-        ButtonAction.SmartTubeSearch -> getString(R.string.action_smarttube_search)
         ButtonAction.Ignore -> getString(R.string.action_ignore)
         is ButtonAction.OpenApp ->
             getString(R.string.action_open_target, apps.firstOrNull { it.pkg == action.pkg }?.label ?: action.pkg)
@@ -1183,7 +1092,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         // arrives, the launcher opens the microphone
         if (remoteState == AtvvRemote.State.BLOCKED) {
             // No voice on this Android: search by typing instead
-            runButtonAction(ButtonAction.SmartTubeSearch)
+            runButtonAction(ButtonAction.Search)
         } else if (remoteState == AtvvRemote.State.READY || remoteState == AtvvRemote.State.CONNECTING) {
             main.removeCallbacks(voiceKeyFallback)
             main.postDelayed(voiceKeyFallback, VOICE_KEY_GRACE_MS)

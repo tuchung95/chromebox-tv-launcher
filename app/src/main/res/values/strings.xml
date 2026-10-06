@@ -13,7 +13,6 @@
     <string name="hero_open">Mở ngay</string>
     <string name="hero_app">Ứng dụng yêu thích</string>
     <string name="hero_youtube_tv">YouTube giao diện TV, điều khiển bằng remote</string>
-    <string name="hero_smarttube">YouTube bằng SmartTube, không quảng cáo</string>
     <string name="hero_launcher">Xem ngay trong launcher · %1$s</string>
     <string name="hero_browser">Mở bằng %1$s · %2$s</string>
 
@@ -45,7 +44,6 @@
     <string name="row_watch">Xem ngay</string>
     <string name="row_favorites">Yêu thích</string>
     <string name="row_apps">Tất cả ứng dụng</string>
-    <string name="row_smarttube">SmartTube</string>
 
     <!-- Header -->
     <string name="fullscreen_enter">Toàn màn hình</string>
@@ -61,13 +59,11 @@
     <string name="field_search" formatted="false">Tìm kiếm (tùy chọn), ví dụ youtube.com/results?search_query=%s</string>
     <string name="opener_launcher">Mở ngay trong launcher</string>
     <string name="opener_youtube_tv">Mở bằng giao diện YouTube TV</string>
-    <string name="opener_smarttube">Mở bằng SmartTube</string>
     <string name="opener_browser4k">Mở bằng 4K Browser</string>
     <string name="opener_chrome">Mở bằng Chrome</string>
     <string name="name_launcher">Launcher</string>
     <string name="name_browser4k">4K Browser</string>
     <string name="name_chrome">Chrome</string>
-    <string name="name_smarttube">SmartTube</string>
     <string name="error_url">Địa chỉ chưa đúng</string>
     <string name="error_search" formatted="false">Địa chỉ tìm kiếm phải có %s ở chỗ đặt từ khóa</string>
     <string name="delete_confirm">Xóa “%1$s” khỏi màn hình chính?</string>
@@ -103,7 +99,7 @@
     <string name="remote_no_permission">Remote: cần quyền Bluetooth</string>
     <string name="remote_no_voice">Remote: không có dịch vụ giọng nói</string>
     <string name="remote_blocked">Remote: Android chặn micro của remote</string>
-    <string name="remote_help">Ghép đôi remote Xiaomi trong Cài đặt › Bluetooth của ChromeOS.\n\nTrên ChromeOS, Android chỉ cho ứng dụng hệ thống dùng micro của remote. Nút micro của remote gửi phím F5, và ChromeOS dùng F5 để hiện các cửa sổ. Để nút micro mở tìm kiếm (SmartTube nếu đã cài), vào Cài đặt ChromeOS › Thiết bị › Bàn phím và phương thức nhập, chọn bàn phím của remote và bật tùy chọn dùng các phím ở hàng trên cùng làm phím chức năng. Muốn nút micro làm việc khác, gán nó trong Cài đặt › Nút remote.\n\nTrên Android TV box, bấm nút micro rồi nói, ví dụ: mở YouTube, tìm trên YouTube nhạc Trịnh, mở VLC.</string>
+    <string name="remote_help">Ghép đôi remote Xiaomi trong Cài đặt › Bluetooth của ChromeOS.\n\nTrên ChromeOS, Android chỉ cho ứng dụng hệ thống dùng micro của remote, nên không ra lệnh bằng giọng nói được. Nút micro của remote mở màn hình cửa sổ của ChromeOS và không gán lại được. Để tìm kiếm nhanh, gán một nút khác, ví dụ Menu, thành “Mở Tìm kiếm” trong Cài đặt › Nút remote.\n\nTrên Android TV box, bấm nút micro rồi nói, ví dụ: mở YouTube, tìm trên YouTube nhạc Trịnh, mở VLC.</string>
     <string name="remote_reconnect">Kết nối lại</string>
     <string name="remote_test_mic">Thử micro</string>
     <string name="remote_details">Android %1$s · %2$d thiết bị Bluetooth đã ghép đôi\nNhật ký kết nối:</string>
@@ -151,7 +147,6 @@
     <string name="button_web_missing">Trang web của nút này đã bị xóa</string>
     <string name="button_no_web">Chưa có trang web nào</string>
     <string name="action_search">Mở Tìm kiếm của launcher</string>
-    <string name="action_smarttube_search">Tìm trên SmartTube</string>
     <string name="action_voice">Nói lệnh bằng micro remote</string>
     <string name="action_home">Về Trang chủ</string>
     <string name="action_apps">Mở tất cả ứng dụng</string>
@@ -203,26 +198,6 @@
     <string name="age_years">%1$d năm trước</string>
     <string name="channel_remove_confirm">Bỏ kênh “%1$s” khỏi Trang chủ?</string>
 
-    <!-- SmartTube -->
-    <string name="smarttube_title">SmartTube</string>
-    <string name="smarttube_installed">Đã cài · ô YouTube mở bằng SmartTube · bấm để mở</string>
-    <string name="smarttube_not_installed_detail">YouTube cho TV, chặn quảng cáo · bấm để cài bản chính thức từ GitHub</string>
-    <string name="smarttube_not_installed">Chưa cài SmartTube. Vào Cài đặt › SmartTube để cài.</string>
-    <string name="smarttube_missing">Chưa cài SmartTube, đang mở YouTube giao diện TV</string>
-    <string name="smarttube_install_title">Cài SmartTube</string>
-    <string name="smarttube_install_message">SmartTube là ứng dụng YouTube mã nguồn mở dành cho TV, có chặn quảng cáo.\n\nLauncher tải bản ổn định mới nhất từ github.com/yuliskov/SmartTube, kiểm tra mã SHA-256 do GitHub công bố, rồi chuyển cho trình cài đặt của Android. Sau khi cài, ô YouTube sẽ mở bằng SmartTube và Trang chủ có thêm hàng SmartTube. Bạn vẫn đổi lại được trong menu của ô YouTube.</string>
-    <string name="smarttube_install">Cài</string>
-    <string name="smarttube_finding">Đang tìm bản SmartTube mới nhất…</string>
-    <string name="smarttube_no_apk">Không thấy file APK hợp với máy này</string>
-    <string name="smarttube_failed">Cài SmartTube thất bại: %1$s</string>
-    <string name="smarttube_home">Trang chủ</string>
-    <string name="smarttube_subscriptions">Đăng ký</string>
-    <string name="smarttube_history">Lịch sử</string>
-    <string name="smarttube_playlists">Danh sách phát</string>
-    <string name="smarttube_channels">Kênh</string>
-    <string name="smarttube_music">Âm nhạc</string>
-    <string name="smarttube_news">Tin tức</string>
-    <string name="smarttube_games">Trò chơi</string>
     <string name="remote_choose">Chọn remote</string>
     <string name="remote_auto">Tự động (remote Xiaomi)</string>
 
@@ -256,7 +231,6 @@
     <string name="update_downloading">Đang tải bản %1$s… %2$d%%</string>
     <string name="update_installing">Đang chuẩn bị cài…</string>
     <string name="update_installed">Đã cập nhật xong</string>
-    <string name="install_done">Đã cài xong</string>
     <string name="update_cancelled">Đã hủy cập nhật</string>
     <string name="update_failed">Cập nhật thất bại: %1$s</string>
     <string name="update_bad_hash">File tải về bị lỗi, mã kiểm tra không khớp</string>

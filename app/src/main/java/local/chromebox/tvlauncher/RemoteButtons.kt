@@ -29,11 +29,6 @@ sealed interface ButtonAction {
         override val value = "search"
     }
 
-    /** SmartTube's search screen, or the launcher's Search tab without SmartTube. */
-    data object SmartTubeSearch : ButtonAction {
-        override val value = "smarttube_search"
-    }
-
     /** Swallows the button, for keys that do something unwanted. */
     data object Ignore : ButtonAction {
         override val value = "none"
@@ -50,6 +45,7 @@ sealed interface ButtonAction {
     companion object {
         private const val APP = "app:"
         private const val WEB = "web:"
+        private const val RETIRED_SMARTTUBE_SEARCH = "smarttube_search"
 
         fun parse(value: String): ButtonAction? = when {
             value == Voice.value -> Voice
@@ -57,7 +53,8 @@ sealed interface ButtonAction {
             value == AllApps.value -> AllApps
             value == Fullscreen.value -> Fullscreen
             value == Search.value -> Search
-            value == SmartTubeSearch.value -> SmartTubeSearch
+            // Versions 1.0.16 and older could open SmartTube's search
+            value == RETIRED_SMARTTUBE_SEARCH -> Search
             value == Ignore.value -> Ignore
             value.startsWith(APP) && value.length > APP.length -> OpenApp(value.removePrefix(APP))
             value.startsWith(WEB) && value.length > WEB.length -> OpenWeb(value.removePrefix(WEB))

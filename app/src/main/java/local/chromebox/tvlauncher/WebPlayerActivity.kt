@@ -197,7 +197,7 @@ class WebPlayerActivity : Activity() {
                 // F5 is the Xiaomi remote's mic button (see MainActivity): search, like the launcher.
                 // In YouTube's TV interface that is YouTube's own search page
                 event.keyCode == KeyEvent.KEYCODE_F5 -> {
-                    if (tvMode) load(YOUTUBE_TV_SEARCH) else runInLauncher(ButtonAction.SmartTubeSearch)
+                    if (tvMode) load(YOUTUBE_TV_SEARCH) else runInLauncher(ButtonAction.Search)
                     return true
                 }
                 event.isCtrlPressed && event.keyCode == KeyEvent.KEYCODE_R -> {

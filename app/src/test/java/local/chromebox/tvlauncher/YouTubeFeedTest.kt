@@ -55,6 +55,15 @@ class YouTubeFeedTest {
     }
 
     @Test
+    fun findsTheVideoInEveryLinkForm() {
+        val watch = "https://www.youtube.com/watch?v=LXb3EKWsInQ"
+        assertEquals(watch, YouTubeFeed.watchUrl("https://www.youtube.com/tv#/watch?v=LXb3EKWsInQ"))
+        assertEquals(watch, YouTubeFeed.watchUrl("https://www.youtube.com/watch?v=LXb3EKWsInQ&t=30"))
+        assertEquals(watch, YouTubeFeed.watchUrl("https://youtu.be/LXb3EKWsInQ"))
+        assertNull(YouTubeFeed.watchUrl("https://www.youtube.com/tv"))
+    }
+
+    @Test
     fun channelLinksNeedNoLookup() {
         assertEquals("UCabsTV34JwALXKGMqHpvUiA", YouTubeFeed.channelIdIn("https://www.youtube.com/channel/UCabsTV34JwALXKGMqHpvUiA/videos"))
         assertEquals("UCabsTV34JwALXKGMqHpvUiA", YouTubeFeed.channelIdIn("UCabsTV34JwALXKGMqHpvUiA"))

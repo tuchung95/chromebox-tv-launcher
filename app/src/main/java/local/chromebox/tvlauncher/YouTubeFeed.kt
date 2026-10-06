@@ -41,6 +41,20 @@ object YouTubeFeed {
 
     fun feedUrl(channelId: String) = "https://www.youtube.com/feeds/videos.xml?channel_id=$channelId"
 
+    /**
+     * A watch address for the video in [url], which may also be in YouTube TV's "#/watch?v="
+     * form or a youtu.be link; null when the page is not a video.
+     */
+    fun watchUrl(url: String): String? {
+        val id = VIDEO_PARAM.find(url)?.groupValues?.get(1)
+            ?: SHORT_LINK.find(url)?.groupValues?.get(1)
+            ?: return null
+        return "https://www.youtube.com/watch?v=$id"
+    }
+
+    private val VIDEO_PARAM = Regex("[?&#/]v=([A-Za-z0-9_-]{11})")
+    private val SHORT_LINK = Regex("youtu\\.be/([A-Za-z0-9_-]{11})")
+
     /** The video in YouTube's TV interface, which the launcher's openers all understand. */
     fun tvWatchUrl(videoId: String) = "https://www.youtube.com/tv#/watch?v=$videoId"
 

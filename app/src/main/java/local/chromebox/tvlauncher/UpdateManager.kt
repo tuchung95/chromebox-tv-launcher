@@ -40,8 +40,6 @@ data class AppUpdate(
  * they are handed to the system installer. Android still asks the viewer to confirm each
  * install, because side-loaded apps cannot update silently.
  *
- * [fetchApk] and [install] also install SmartTube when the viewer asks for it.
- *
  * Every method except [canInstall] and [installPermissionIntent] blocks; call them off the
  * main thread.
  */
@@ -87,13 +85,8 @@ class UpdateManager(private val context: Context) {
         return target
     }
 
-    /** Package name inside a downloaded APK, or null when it can't be read. */
-    fun packageOf(apk: File): String? = context.packageManager.getPackageArchiveInfo(apk.path, 0)?.packageName
-
-    fun fetchText(url: String): String = String(fetch(url), Charsets.UTF_8)
-
     /** Downloads an APK into the cache as [name] and checks its SHA-256; [onProgress] receives 0–100. */
-    fun fetchApk(url: String, sha256: String, name: String, onProgress: (Int) -> Unit): File {
+    private fun fetchApk(url: String, sha256: String, name: String, onProgress: (Int) -> Unit): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
         val target = File(dir, name)
@@ -208,12 +201,8 @@ class InstallResultReceiver : BroadcastReceiver() {
                 }
                 confirm?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
-            PackageInstaller.STATUS_SUCCESS -> {
-                // The launcher's own update, or another app it installed such as SmartTube
-                val pkg = intent.getStringExtra(EXTRA_PACKAGE)
-                val message = if (pkg == null || pkg == context.packageName) R.string.update_installed else R.string.install_done
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-            }
+            PackageInstaller.STATUS_SUCCESS ->
+                Toast.makeText(context, R.string.update_installed, Toast.LENGTH_LONG).show()
             PackageInstaller.STATUS_FAILURE_ABORTED ->
                 Toast.makeText(context, R.string.update_cancelled, Toast.LENGTH_SHORT).show()
             else -> {
