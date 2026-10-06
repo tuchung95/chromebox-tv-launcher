@@ -130,6 +130,9 @@
     <string name="remote_event_audio_stop">Hết âm thanh</string>
     <string name="remote_event_mic_error">Remote từ chối mở micro (mã %1$s)</string>
 
+    <string name="crash_title">Lần trước Chromebox TV bị lỗi</string>
+    <string name="crash_message">Hãy chụp màn hình này và gửi để sửa lỗi.</string>
+
     <!-- Remote buttons -->
     <string name="buttons_title">Nút remote</string>
     <string name="buttons_none">Chưa gán nút nào · bấm để gán</string>

@@ -120,6 +120,21 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
 
         // A launcher never closes itself on Back; it returns to the navigation bar and Home tab
         onBackPressedDispatcher.addCallback(this) { home.backRequest++ }
+        showLastCrash()
+    }
+
+    /** Shows the last crash's stack trace once (see LauncherApp), so a photo of it can be sent. */
+    private fun showLastCrash() {
+        val file = LauncherApp.crashFile(this)
+        if (!file.exists()) return
+        val text = runCatching { file.readText() }.getOrDefault("")
+        file.delete()
+        if (text.isBlank()) return
+        AlertDialog.Builder(this, DIALOG_THEME)
+            .setTitle(R.string.crash_title)
+            .setMessage(getString(R.string.crash_message) + "\n\n" + text)
+            .setPositiveButton(R.string.close, null)
+            .show()
     }
 
     override fun onStart() {
@@ -734,11 +749,18 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
             .setNeutralButton(R.string.remote_choose) { _, _ -> chooseRemote() }
             .setNegativeButton(R.string.close, null)
             .create()
-        // Redraws every second while open, so the log shows the link as it progresses
+        // Redraws every second while open, so the log shows the link as it progresses. Only
+        // in-memory state is read here: Bluetooth calls can block for seconds on ChromeOS and
+        // would freeze the screen and the remote
+        var shown = ""
         val refresh = object : Runnable {
             override fun run() {
                 if (!dialog.isShowing) return
-                dialog.setMessage(remoteDetails())
+                val text = remoteDetails()
+                if (text != shown) {
+                    shown = text
+                    dialog.setMessage(text)
+                }
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setText(
                     if (remoteState == AtvvRemote.State.READY) R.string.remote_test_mic else R.string.remote_reconnect
                 )
@@ -755,7 +777,7 @@ class MainActivity : ComponentActivity(), AtvvRemote.Listener, SpeechEngine.List
         val clock = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
         return buildString {
             append(getString(remoteStatusText())).append(remoteName?.let { " · $it" } ?: "")
-            append("\n\n").append(getString(R.string.remote_details, Build.VERSION.RELEASE, remote.knownDevices().size))
+            append("\n\n").append(getString(R.string.remote_details, Build.VERSION.RELEASE, remote.pairedCount))
             remote.recentEvents().forEach { entry ->
                 append('\n').append(clock.format(Date(entry.time))).append("  ").append(eventText(entry))
             }

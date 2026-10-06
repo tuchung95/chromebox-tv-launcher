@@ -74,17 +74,19 @@ class AtvvRemote(
     // Set-up after connecting: which step is running, and timers for steps that never finish
     @Volatile private var step = ""
     private var legacyCapsTried = false
-    private val setupWatchdog = Runnable { onSetupStalled() }
-    private val capsTimeout = Runnable { onCapsTimeout() }
+    private val setupWatchdog = Runnable { guarded { onSetupStalled() } }
+    private val capsTimeout = Runnable { guarded { onCapsTimeout() } }
 
     // Serialized GATT operations: Android allows only one outstanding request at a time
     private val operations = ArrayDeque<Pair<String, () -> Boolean>>()
     private var operationBusy = false
     @Volatile private var currentOperation = ""
     private val operationTimeout = Runnable {
-        record(Event.TIMEOUT, currentOperation)
-        operationBusy = false
-        nextOperation()
+        guarded {
+            record(Event.TIMEOUT, currentOperation)
+            operationBusy = false
+            nextOperation()
+        }
     }
 
     /**
@@ -113,8 +115,8 @@ class AtvvRemote(
     private val decoder = ImaAdpcmDecoder()
     private val log = ArrayDeque<LogEntry>()
 
-    fun start() = worker.post {
-        if (running) return@post
+    fun start() = safely {
+        if (running) return@safely
         running = true
         retryCount = 0
         connect()
@@ -122,7 +124,7 @@ class AtvvRemote(
 
     fun stop() {
         main.removeCallbacks(blockedCheck)
-        worker.post { stopNow() }
+        safely { stopNow() }
     }
 
     private fun stopNow() {
@@ -141,16 +143,36 @@ class AtvvRemote(
      * Opens the microphone without the remote's mic button. While the link is still being set
      * up, the microphone opens as soon as it is ready.
      */
-    fun openMicrophone() = worker.post {
-        if (micRequested || streaming) return@post
+    fun openMicrophone() = safely {
+        if (micRequested || streaming) return@safely
         if (ready) sendMicOpen() else micWanted = true
     }
 
     /** Ends the current voice session, for example once speech has been recognized. */
-    fun closeMicrophone() = worker.post {
+    fun closeMicrophone() = safely {
         micWanted = false
         if (micRequested || streaming) enqueue("mic close") { writeTx(micCloseCommand()) }
         endStream()
+    }
+
+    /** How many Bluetooth devices Android saw at the last search, for the remote dialog. */
+    @Volatile var pairedCount = 0
+        private set
+
+    /**
+     * Runs Bluetooth work on the worker thread. A failure is logged for the remote dialog
+     * instead of taking the whole launcher down.
+     */
+    private fun safely(block: () -> Unit) {
+        worker.post { guarded(block) }
+    }
+
+    private fun guarded(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            record(Event.OP_ERROR, "${e.javaClass.simpleName} ${e.message.orEmpty().take(80)}")
+        }
     }
 
     /** The latest link events, oldest first. */
@@ -192,6 +214,7 @@ class AtvvRemote(
 
     private fun findRemote(): BluetoothDevice? {
         val devices = candidates()
+        pairedCount = devices.size
         preferredAddress()?.let { address ->
             return devices.firstOrNull { it.address == address }
                 ?: runCatching { bluetooth?.adapter?.getRemoteDevice(address) }.getOrNull()
@@ -224,7 +247,7 @@ class AtvvRemote(
         if (!running) return
         val delay = minOf(MAX_RETRY_MS, BASE_RETRY_MS shl minOf(retryCount, 4))
         retryCount++
-        worker.postDelayed({ if (running && gatt == null) connect() }, delay)
+        worker.postDelayed({ guarded { if (running && gatt == null) connect() } }, delay)
     }
 
     private fun teardown() {
@@ -385,7 +408,7 @@ class AtvvRemote(
             currentOperation = name
             val started = try {
                 operation()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 record(Event.OP_ERROR, "$name · ${e.javaClass.simpleName} ${e.message.orEmpty().take(80)}")
                 false
             }
@@ -540,10 +563,10 @@ class AtvvRemote(
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            worker.post {
+            safely {
                 if (g != gatt) {
                     runCatching { g.close() }
-                    return@post
+                    return@safely
                 }
                 if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                     record(Event.CONNECTED)
@@ -554,7 +577,7 @@ class AtvvRemote(
                     main.postDelayed(blockedCheck, BLOCKED_CHECK_MS)
                     // A larger MTU carries whole audio frames per notification
                     if (!g.requestMtu(REQUESTED_MTU)) discoverServices(g)
-                    else worker.postDelayed({ discoverServices(g) }, MTU_FALLBACK_MS)
+                    else worker.postDelayed({ guarded { discoverServices(g) } }, MTU_FALLBACK_MS)
                 } else {
                     record(Event.DISCONNECTED, "status $status")
                     teardown()
@@ -565,22 +588,22 @@ class AtvvRemote(
         }
 
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
-            worker.post {
+            safely {
                 if (g == gatt) record(Event.MTU, "$mtu · status $status")
                 discoverServices(g)
             }
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-            worker.post {
-                if (g != gatt) return@post
+            safely {
+                if (g != gatt) return@safely
                 record(Event.SERVICES, "status $status · " + g.services.joinToString(" ") { shortId(it.uuid) })
                 setUp(g)
             }
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
-            worker.post {
+            safely {
                 record(Event.NOTIFY, "${shortName(descriptor.characteristic.uuid)} · status $status")
                 operationDone()
             }
@@ -591,7 +614,7 @@ class AtvvRemote(
             characteristic: BluetoothGattCharacteristic,
             status: Int
         ) {
-            worker.post {
+            safely {
                 if (status != BluetoothGatt.GATT_SUCCESS) record(Event.WRITE_FAILED, "${shortName(characteristic.uuid)} · status $status")
                 operationDone()
             }
@@ -620,11 +643,11 @@ class AtvvRemote(
         }
 
         private fun onRead(uuid: UUID, value: ByteArray?, status: Int) {
-            worker.post { readDone(uuid, value, status) }
+            safely { readDone(uuid, value, status) }
         }
 
         private fun onChanged(uuid: UUID, value: ByteArray) {
-            worker.post {
+            safely {
                 when (uuid) {
                     CONTROL -> onControl(value)
                     AUDIO -> onAudio(value)
